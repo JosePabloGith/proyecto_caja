@@ -1,0 +1,16 @@
+# ignorar el binario compilado
+bin/
+# Ignorar objetos de compilación
+*.o
+# Ignorar archivos temporales de editores
+*~
+# Ignoramos archivos de respaldo manuales
+backup/
+# Ignorar archivos de temporales de NeoVim
+*.swp
+*.swo
+undo/
+
+#ignorara archivos del sistema operativo o basura
+.DS_Store
+Thumbs.db
