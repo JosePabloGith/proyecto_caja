@@ -939,7 +939,7 @@ void dibujarFoco() {
     glPushMatrix();
 
         // Nos movemos a la posicion de la luz
-        glTranslatef(focoX, focoY, focoZ);
+        glTranslatef(lightPos[0], lightPos[1], lightPos[2]);
 
         // Desactivamos iluminacion -> el foco se pinta con color puro
         glDisable(GL_LIGHTING);
