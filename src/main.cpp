@@ -807,12 +807,12 @@ void teclado(unsigned char key, int x, int y) {
             break;
     
         // ------ MOVER EL FOCO CON TECLADO NUMÉRICO ------
-        case '8': focoZ -= 0.5f; break;
-        case '2': focoZ += 0.5f; break;
-        case '6': focoX += 0.5f; break;
-        case '4': focoX -= 0.5f; break;
-        case '1': focoY += 0.5f; break;
-        case '0': if (focoY > 0.5f) focoY -= 0.5f; break;
+        case '8': lightPos[2] -= 0.5f; break;
+        case '2': lightPos[2] += 0.5f; break;
+        case '6': lightPos[0] += 0.5f; break;
+        case '4': lightPos[0] -= 0.5f; break;
+        case '1': lightPos[1] += 0.5f; break;
+        case '0': if (lightPos[1] > 0.5f) lightPos[1] -= 0.5f; break;
 
         case ' ': //espacio
             tapIsOpening = !tapIsOpening;
@@ -823,10 +823,6 @@ void teclado(unsigned char key, int x, int y) {
             exit(0);
             break;
     }
-
-    lightPos[0] = focoX;
-    lightPos[1] = focoY;
-    lightPos[2] = focoZ;
     
     glutPostRedisplay();
 }
