@@ -255,7 +255,7 @@ void dibujarGema(){
 glPushMatrix();
     
     // Posicionar gema en el centro del toroide
-    glTranslatef(0.0f, 2.4f, 0.0f);
+    glTranslatef(0.0f, gemaY, 0.0f);
     
     // =========================================================
     // PARTE 1: PASADA SÓLIDA (Caras de cristal reflectante)
