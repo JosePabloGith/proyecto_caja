@@ -11,7 +11,8 @@
  * 1.- Establecimos el esqueleto inicial del proyecto de graficas por computadora
  * 2.- Agregamos el sistema de cámara con rotación polar
  * 3.- Creamos el plano base (piso) con normales
- * 4.- Sombras
+ * 4.- Sombras 
+ * 5.- Limpieza de código y organización
  */
 
 // ============================================================================
