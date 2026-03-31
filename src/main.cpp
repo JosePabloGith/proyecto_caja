@@ -23,6 +23,7 @@
 #include <time.h>     // <- para una semilla pseudoaleatoria 
 #include <GL/glut.h>
 
+
 //seccion para el audio
 #define MINIAUDIO_IMPLEMENTATION
 #include "include/miniaudio.h"
