@@ -1314,24 +1314,37 @@ void dibujarReflejoMadera() {
     glPopMatrix();
     
     // =========================================================
-    // 4. NUEVO: CAPA DE BARNIZ OSCURECEDOR (Filtro óptico)
+    // 4. NUEVO: CAPA DE BARNIZ OSCURECEDOR (¡Ahora con luz!)
     // =========================================================
-    // Seguimos dentro del Stencil, así que esto solo afectará la base.
-    glDisable(GL_LIGHTING);   // Apagamos la luz para pintar color puro
-    glDisable(GL_TEXTURE_2D); // Apagamos texturas
+    
+    // A) Restauramos la luz del mundo (la habíamos atenuado para el reflejo invertido)
+    GLfloat luzDifusaNormal[] = { 1.0f, 1.0f, 0.95f, 1.0f }; 
+    GLfloat luzEspecularNormal[] = { 0.8f, 0.8f, 0.8f, 1.0f };
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, luzDifusaNormal);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, luzEspecularNormal);
+
+    // B) Activamos la iluminación para que la capa superior brille
+    glEnable(GL_LIGHTING);   
+    glDisable(GL_TEXTURE_2D); // Sin textura, solo color puro
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // Tinte café oscuro (RGB: 0.1, 0.05, 0.02)
-    // El 4to valor (0.75f) es la fuerza del filtro. 
-    // Si quieres que el reflejo sea aún más tenue, súbelo a 0.85f o 0.90f.
-    // Si quieres que el reflejo sea más visible, bájalo a 0.60f.
-    glColor4f(0.1f, 0.05f, 0.02f, 0.75f); 
+    // C) Material del barniz: Muy pulido y reflectante (brillo blanco intenso)
+    GLfloat barnizEspecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GLfloat barnizBrillo[]    = { 128.0f }; // Concentración máxima del destello
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, barnizEspecular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, barnizBrillo);
+
+    // D) Tinte café oscuro, un poco más transparente (40%) para dejar ver la madera
+    glColor4f(0.1f, 0.05f, 0.02f, 0.40f); 
     
     glPushMatrix();
-        // Lo dibujamos un milímetro arriba del piso para cubrir el reflejo
+        // Lo dibujamos un milímetro arriba del piso
         glTranslatef(0.0f , cajaAlto / 2.0f + 0.015f , 0.0f);
         glBegin(GL_QUADS);
+            // ¡VITAL! La normal debe apuntar hacia ARRIBA (+Y) para que intercepte la luz del foco
+            glNormal3f(0.0f, 1.0f, 0.0f); 
+            
             glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
@@ -1340,8 +1353,8 @@ void dibujarReflejoMadera() {
     glPopMatrix();
 
     // Restaura absolutamente todo a la normalidad
-    glPopAttrib();
-    
+    glPopAttrib(); 
+
 }
 
 
