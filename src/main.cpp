@@ -107,9 +107,6 @@ float lightPos[4] = { 5.0f, 10.0f, 5.0f, 1.0f };
 //float brazoAngulo1 = 0.0f;       // Primer joint del brazo (articulación 1)
 //float brazoAngulo2 = 0.0f;       // Segundo joint del brazo (articulación 2)
 
-// ------ ESTADO DE SELECCIÓN ------
-int selectedPart = -1;           // -1=ninguno, 0=tapa, 1=rueda, 2=brazo
-float animSpeedMultiplier = 1.0f;// 1.0=velocidad normal, 2.0+=acelerada (si está seleccionada)
 
 // ------ FLAGS DE VISUALIZACIÓN (Controles con teclas) ------
 bool bCull = false;              // F1: Culling (quitar caras ocultas)
