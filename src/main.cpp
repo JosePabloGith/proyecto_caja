@@ -130,8 +130,8 @@ float tapRotationSpeed = 1.5f;   // Grados por frame
 bool tapIsOpening = false;       // ¿Está en proceso de abrir?
 
 // ------ GEMA ADENTRO ------
-float gemaRadius = 1.2f;         // Radio de la esfera de la gema
-float gemaY = 1.5f;              // Altura a la que flota dentro de la caja
+float gemaRadius = 1.65f;         // Radio de la esfera de la gema
+float gemaY = 2.4f;              // Altura a la que flota dentro de la caja
 float alturaLuz = 4.0f;          // Altura de la luz (para iluminación)
 
 
