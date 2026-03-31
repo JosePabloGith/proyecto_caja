@@ -1263,10 +1263,9 @@ void dibujarTapa() {
 // Dibuja el Toroide y la Gema de cabeza usando el Stencil Buffer como máscara.
 // ============================================================================
 void dibujarReflejoMadera() {
+glPushAttrib(GL_ALL_ATTRIB_BITS);
 
-    glPushAttrib(GL_ALL_ATTRIB_BITS);
-
-    // 1. Limpiar el Stencil Buffer
+    // 1. Limpiar el Stencil Buffer de sombras previas
     glClear(GL_STENCIL_BUFFER_BIT);
 
     glEnable(GL_STENCIL_TEST);
@@ -1278,7 +1277,7 @@ void dibujarReflejoMadera() {
     glDepthMask(GL_FALSE);
     glDepthFunc(GL_LEQUAL);
 
-    // Dibujar SOLO el fondo interior de la caja (crea la máscara)
+    // Dibujar SOLO el fondo interior de la caja (crea la máscara del espejo)
     glPushMatrix();
         glTranslatef(0.0f , cajaAlto / 2.0f + 0.01f , 0.0f);
         glBegin(GL_QUADS);
@@ -1295,7 +1294,7 @@ void dibujarReflejoMadera() {
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
     glDisable(GL_DEPTH_TEST); 
 
-    // Atenuamos la luz
+    // Atenuamos la luz para el mundo invertido (el reflejo no debe brillar más que la madera)
     GLfloat luzTenue[] = { 0.2f, 0.2f, 0.25f, 1.0f }; 
     glLightfv(GL_LIGHT0, GL_DIFFUSE, luzTenue);
     glLightfv(GL_LIGHT0, GL_SPECULAR, luzTenue);
@@ -1314,51 +1313,56 @@ void dibujarReflejoMadera() {
     glPopMatrix();
     
     // =========================================================
-    // 4. NUEVO: CAPA DE BARNIZ OSCURECEDOR (¡Ahora con luz!)
+    // 4. CAPA DE BARNIZ TEXTURIZADO (El secreto de la madera)
     // =========================================================
     
-    // A) Restauramos la luz del mundo (la habíamos atenuado para el reflejo invertido)
+    // A) Restauramos la luz normal del foco
     GLfloat luzDifusaNormal[] = { 1.0f, 1.0f, 0.95f, 1.0f }; 
     GLfloat luzEspecularNormal[] = { 0.8f, 0.8f, 0.8f, 1.0f };
     glLightfv(GL_LIGHT0, GL_DIFFUSE, luzDifusaNormal);
     glLightfv(GL_LIGHT0, GL_SPECULAR, luzEspecularNormal);
 
-    // B) Activamos la iluminación para que la capa superior brille
+    // B) Habilitamos textura y luces (CRÍTICO para que no se vea blanco/gris)
     glEnable(GL_LIGHTING);   
-    glDisable(GL_TEXTURE_2D); // Sin textura, solo color puro
-    glBindTexture(GL_TEXTURE_2D, texturaMaderaCaja); //recuperamos la textura de madera
-
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texturaMaderaCaja); // Recuperamos la textura de la madera
+    
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // C) Material del barniz: Muy pulido y reflectante (brillo blanco intenso)
-    GLfloat barnizEspecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    GLfloat barnizBrillo[]    = { 100.0f }; 
+    // C) Material del barniz: Reflejo especular moderado
+    GLfloat barnizEspecular[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+    GLfloat barnizBrillo[]    = { 80.0f }; 
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, barnizEspecular);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, barnizBrillo);
 
-    // D) color blanco para no pintar la textura con 80% de opacidad
-    // si no se ve el reflejo podemos bajar la opacidad a 0.70f 
-    // si se ve muy falso podemos subirla a 0.90f
-    glColor4f(0.1f, 1.0f, 1.0f, 0.80f); 
+    // D) Color blanco puro con 80% de opacidad.
+    // Mostrará la textura de madera casi sólida, filtrando solo 20% del reflejo inferior.
+    glColor4f(1.0f, 1.0f, 1.0f, 0.80f); 
     
     glPushMatrix();
-        // Lo dibujamos un milímetro , un pelin , arriba del piso
+        // Un milímetro arriba para tapar el reflejo invertido
         glTranslatef(0.0f , cajaAlto / 2.0f + 0.015f , 0.0f);
         glBegin(GL_QUADS);
-            // ¡VITAL! La normal debe apuntar hacia ARRIBA (+Y) para que intercepte la luz del foco
-            glNormal3f(0.0f, 1.0f, 0.0f); 
+            glNormal3f(0.0f, 1.0f, 0.0f); // Normal hacia arriba para atrapar la luz
             
-            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+            // ¡EL FIX! Coordenadas idénticas a dibujarCaja() para alinear las vetas
+            glTexCoord2f(0.0f, 1.0f); 
+	    glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+            
+	    glTexCoord2f(1.0f, 1.0f); 
+	    glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+            
+	    glTexCoord2f(1.0f, 0.0f); 
+	    glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+            
+	    glTexCoord2f(0.0f, 0.0f); 
+	    glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
         glEnd();
     glPopMatrix();
 
     // Restaura absolutamente todo a la normalidad
-    glPopAttrib(); 
-
+    glPopAttrib();
 }
 
 
