@@ -99,14 +99,7 @@ bool mousePresionado = false;
  * w = 0.0 → luz direccional (como el sol)
  */
 float lightPos[4] = { 5.0f, 10.0f, 5.0f, 1.0f };
-/*
- * Variables para mover el foco con teclado:
- * El foco se mueve en los 3 ejes para poder iluminar
- * diferentes partes de la caja
- */
-float focoX = 5.0f;   // Posición horizontal
-float focoY = 10.0f;  // Posición vertical (altura)
-float focoZ = 5.0f;   // Posición de profundidad
+
 
 // ------ ANIMACIONES Y ARTICULACIONES ------
 //float tapRotation = 0.0f;        // Ángulo de apertura de tapa
