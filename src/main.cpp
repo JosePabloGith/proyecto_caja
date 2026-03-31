@@ -297,7 +297,7 @@ glPushMatrix();
     gluQuadricDrawStyle(q, GLU_FILL); // Forzamos dibujado sólido
 
     // Dimensiones del diamante
-    float R  = 1.65f;   // Cintura
+    float R  = gemaRadius;   // Cintura
     float h1 = 0.5f;    // Altura corona (arriba)
     float h2 = 1.20f;   // Altura pabellón (pico abajo)
 
