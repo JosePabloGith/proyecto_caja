@@ -225,13 +225,7 @@ void dibujarToroide(){
 
     glColor3f(1.0f, 0.84f, 0.0f);  // Oro
   
-    /*
-    //aplicamos la textura
-    glEnable(GL_TEXTURE_GEN_S);
-    glEnable(GL_TEXTURE_GEN_T);
-    glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_OBJECT_LINEAR);
-    glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_OBJECT_LINEAR);
-    */
+
 
 
     // radioTubo=0.25, radioAnillo=1.4 — cabe dentro de la caja (ancho/2 = 3)
