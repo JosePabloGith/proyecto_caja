@@ -162,7 +162,6 @@ void mouseMovimiento(int x, int y);
 void configurarOpenGL();
 void cargarTexturasSkybox();
 GLuint cargarBMP(const char* ruta);
-void calcularMatrizSombra(float* , float* , float ); //-> nueva
 
 
 /*esta funcion nos ayudara a aplicar la matris de sombra
