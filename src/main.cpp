@@ -1666,13 +1666,7 @@ void configurarOpenGL() {
     glFrontFace(GL_CCW);
 
 
-    //---------------------------------------------------------------------
-    //7.- Efetos de transparencia Blending para mesclar colores :D
-    //---------------------------------------------------------------------
-    //glEnable(GL_BLEND);
-    //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    // no necesarios ahora, ya que los metodos dibujarGema y dibujarSombraCaja lo implementan :D
-}
+    }
 
 // ============================================================================
 // MAIN
