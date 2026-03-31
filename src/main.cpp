@@ -13,6 +13,7 @@
  * 3.- Creamos el plano base (piso) con normales
  * 4.- Sombras 
  * 5.- Limpieza de código y organización
+ * 6.- Implementacion del sistema de puzle Temporal
  */
 
 // ============================================================================
@@ -67,6 +68,8 @@ GLuint texturaPisoCristal = 0;
 //textura de oro para el toroide
 GLuint texturaOro = 0;
 
+//textura para el pergamino del puzzle
+GLuint texturaPapel = 0; //ID de la textura del pergamino (cargada solo una vez)
 
 
 
@@ -101,11 +104,11 @@ bool mousePresionado = false;
 float lightPos[4] = { 5.0f, 10.0f, 5.0f, 1.0f };
 
 
-// ------ ANIMACIONES Y ARTICULACIONES ------
-//float tapRotation = 0.0f;        // Ángulo de apertura de tapa
-//float ruedaRotation = 0.0f;      // Ángulo de rueda giratoria
-//float brazoAngulo1 = 0.0f;       // Primer joint del brazo (articulación 1)
-//float brazoAngulo2 = 0.0f;       // Segundo joint del brazo (articulación 2)
+// >>> FIX DEL MECÁNICO: Variables para el PUZZLE y NURBS (punto 4 de la rúbrica)
+int combinacion[4] = {1,1,1,1}; 
+bool cajaDesbloqueada = false; 
+GLUnurbsObj* nurbPergamino = NULL; 
+GLfloat ctrlPointsNurbs[4][4][3]; // FIX CRÍTICO: Renombrado de ctrlPoints a ctrlPointsNurbs para alinear con el código
 
 
 // ------ FLAGS DE VISUALIZACIÓN (Controles con teclas) ------
@@ -145,7 +148,13 @@ void dibujarPiso();
 void dibujarCaja();
 void dibujarReflejoMadera();
 void dibujarTapa();
-void dibujarSombraCaja(); //-> nueva
+void dibujarSombraCaja(); 
+void dibujarToroide();
+void dibujarPatasToroide();
+void dibujarGema();
+void dibujarPanelesPuzzle();
+void dibujarPergamino();
+
 
 // Funciones principales de openGL y GLUT
 void display();
@@ -162,6 +171,7 @@ void mouseMovimiento(int x, int y);
 void configurarOpenGL();
 void cargarTexturasSkybox();
 GLuint cargarBMP(const char* ruta);
+void initNURBS();
 
 
 /*esta funcion nos ayudara a aplicar la matris de sombra
@@ -169,29 +179,29 @@ GLuint cargarBMP(const char* ruta);
  * en una de sus clases de shadow matrix
  * */
 void gltMakeShadowMatrix(GLfloat vPlaneEquation[], GLfloat vLightPos[], GLfloat destMat[]) {
-	GLfloat dot;
-	dot = vPlaneEquation[0] * vLightPos[0] + vPlaneEquation[1] * vLightPos[1] +
-		vPlaneEquation[2] * vLightPos[2] + vPlaneEquation[3] * vLightPos[3];
+    GLfloat dot;
+    dot = vPlaneEquation[0] * vLightPos[0] + vPlaneEquation[1] * vLightPos[1] +
+        vPlaneEquation[2] * vLightPos[2] + vPlaneEquation[3] * vLightPos[3];
 
-	destMat[0] = dot - vLightPos[0] * vPlaneEquation[0];
-	destMat[4] = 0.0f - vLightPos[0] * vPlaneEquation[1];
-	destMat[8] = 0.0f - vLightPos[0] * vPlaneEquation[2];
-	destMat[12] = 0.0f - vLightPos[0] * vPlaneEquation[3];
+    destMat[0] = dot - vLightPos[0] * vPlaneEquation[0];
+    destMat[4] = 0.0f - vLightPos[0] * vPlaneEquation[1];
+    destMat[8] = 0.0f - vLightPos[0] * vPlaneEquation[2];
+    destMat[12] = 0.0f - vLightPos[0] * vPlaneEquation[3];
 
-	destMat[1] = 0.0f - vLightPos[1] * vPlaneEquation[0];
-	destMat[5] = dot - vLightPos[1] * vPlaneEquation[1];
-	destMat[9] = 0.0f - vLightPos[1] * vPlaneEquation[2];
-	destMat[13] = 0.0f - vLightPos[1] * vPlaneEquation[3];
+    destMat[1] = 0.0f - vLightPos[1] * vPlaneEquation[0];
+    destMat[5] = dot - vLightPos[1] * vPlaneEquation[1];
+    destMat[9] = 0.0f - vLightPos[1] * vPlaneEquation[2];
+    destMat[13] = 0.0f - vLightPos[1] * vPlaneEquation[3];
 
-	destMat[2] = 0.0f - vLightPos[2] * vPlaneEquation[0];
-	destMat[6] = 0.0f - vLightPos[2] * vPlaneEquation[1];
-	destMat[10] = dot - vLightPos[2] * vPlaneEquation[2];
-	destMat[14] = 0.0f - vLightPos[2] * vPlaneEquation[3];
+    destMat[2] = 0.0f - vLightPos[2] * vPlaneEquation[0];
+    destMat[6] = 0.0f - vLightPos[2] * vPlaneEquation[1];
+    destMat[10] = dot - vLightPos[2] * vPlaneEquation[2];
+    destMat[14] = 0.0f - vLightPos[2] * vPlaneEquation[3];
 
-	destMat[3] = 0.0f - vLightPos[3] * vPlaneEquation[0];
-	destMat[7] = 0.0f - vLightPos[3] * vPlaneEquation[1];
-	destMat[11] = 0.0f - vLightPos[3] * vPlaneEquation[2];
-	destMat[15] = dot - vLightPos[3] * vPlaneEquation[3];
+    destMat[3] = 0.0f - vLightPos[3] * vPlaneEquation[0];
+    destMat[7] = 0.0f - vLightPos[3] * vPlaneEquation[1];
+    destMat[11] = 0.0f - vLightPos[3] * vPlaneEquation[2];
+    destMat[15] = dot - vLightPos[3] * vPlaneEquation[3];
 }
 
 /*
@@ -226,11 +236,9 @@ void dibujarToroide(){
     glColor3f(1.0f, 0.84f, 0.0f);  // Oro
   
 
-
-
     // radioTubo=0.25, radioAnillo=1.4 — cabe dentro de la caja (ancho/2 = 3)
     glutSolidTorus(0.135f, 1.4f, 20, 72);
-	
+    
     
     //deshabilitamos la generacion automatica para no arruinar objetos
     glDisable(GL_TEXTURE_GEN_S);
@@ -428,6 +436,113 @@ void dibujarPatasToroide(){
 
 }
 
+
+// >>> Intentaremos dibujar numeros y nurbs para el puzzle, aunque no se vean tan bien, al
+// menos cumplimos con el punto 4 de la rubrica
+// debugg version
+void dibujarPanelesPuzzle(){
+   
+    // >>> FIX: Apagamos el motor de luz. Las líneas no tienen normales 3D
+    // y la luz las vuelve de color negro mate (invisibles contra la madera).
+    glPushAttrib(GL_LIGHTING_BIT | GL_CURRENT_BIT | GL_LINE_BIT);
+    glDisable(GL_LIGHTING);
+    glLineWidth(2.5f);
+
+    // ← NUEVO: textura de oro con sphere map
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texturaOro);
+    glEnable(GL_TEXTURE_GEN_S);
+    glEnable(GL_TEXTURE_GEN_T);
+    glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
+    glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
+
+    glColor3f(1.0f, 0.84f, 0.0f); // dorado
+				 
+    // La caja está trasladada a Y = cajaAlto/2 + 0.01
+    // Las caras cortas están en X = ±cajaAncho/2 = ±3.0
+    // Mostramos combinacion[0] y [1] en cara +X, [2] y [3] en cara -X
+    float alturaCentro = cajaAlto / 2.0f + 0.01f; // mismo offset que dibujarCaja()
+    float offsetZ = 0.01f; // milímetro fuera de la madera para evitar z-fighting
+    
+    // ========== CARA DERECHA (+X) — números 1 y 2 ==========
+    glPushMatrix();
+        glTranslatef(cajaAncho/2.0f + offsetZ, alturaCentro - 0.08f, 0.0f);  // movemos al centro de la cara +X, con el mismo offset que la caja
+        glRotatef(-90.0f, 0.0f, 1.0f, 0.0f); // rotar para mirar hacia +X
+        glScalef(-0.01f, 0.01f, 0.01f); //ajusta el tamaño de los numeros 
+
+        for (int i = 0; i < 2; i++) {
+            glPushMatrix();
+                glTranslatef((i - 0.5f) * 185.0f, 0.0f, 0.0f); // separa los números horizontalmente 
+                char numStr[2];
+                sprintf(numStr, "%d", combinacion[i]);
+                for (char* c = numStr; *c != '\0'; c++)
+                    glutStrokeCharacter(GLUT_STROKE_ROMAN, *c);
+            glPopMatrix();
+        }
+    glPopMatrix();
+
+    // ========== CARA IZQUIERDA (-X) — números 3 y 4 ==========
+    glPushMatrix();
+        glTranslatef(-cajaAncho/2.0f - offsetZ, alturaCentro - 0.08f, 0.0f);
+        glRotatef(90.0f, 0.0f, 1.0f, 0.0f); // rotar para mirar hacia -X
+        glScalef(-0.01f, 0.01f, 0.01f); // reflejo para que los números no salgan al revés
+
+        for (int i = 2; i < 4; i++) {
+            glPushMatrix();
+                glTranslatef(((i-2) - 0.5f) * 185.0f, 0.0f, 0.0f);
+                char numStr[2];
+                sprintf(numStr, "%d", combinacion[i]);
+                for (char* c = numStr; *c != '\0'; c++)
+                    glutStrokeCharacter(GLUT_STROKE_ROMAN, *c);
+            glPopMatrix();
+        }
+    glPopMatrix();
+
+
+    glDisable(GL_TEXTURE_GEN_S);
+    glDisable(GL_TEXTURE_GEN_T);
+    glDisable(GL_TEXTURE_2D);
+
+    glPopAttrib();
+	
+   }
+
+
+/**
+ *
+ * funcion de dibujado del pergamino del puzzle, debugg
+ *
+ */
+void dibujarPergamino(){
+
+   if (!cajaDesbloqueada) return; //si el puzzle no esta resuelto, no dibujamos el pergamino
+
+    glPushMatrix();
+    //elevamos el pergamino por encima del cofre al abrirse
+    glTranslatef(0.0f, 6.0f , 0.0f);
+
+    //asumimos que la textura texture_paper_old.bmp ya esta cargada en un ID del arrray.
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texturaPapel); // <<-- cargamos la textura del pergamino
+
+        GLfloat nudos[8] = {0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0};
+        GLfloat nudosTex[4] = {0.0, 0.0, 1.0, 1.0};
+        GLfloat texPts[2][2][2] = {{{0.0, 0.0}, {0.0, 1.0}}, {{1.0, 0.0}, {1.0, 1.0}}};
+
+        gluBeginSurface(nurbPergamino);
+          gluNurbsSurface(nurbPergamino, 4, nudosTex, 4, nudosTex, 2 * 2, 2, &texPts[0][0][0], 2, 2, GL_MAP2_TEXTURE_COORD_2);
+          gluNurbsSurface(nurbPergamino, 8, nudos, 8, nudos, 4 * 3, 3, &ctrlPointsNurbs[0][0][0], 4, 4, GL_MAP2_VERTEX_3);
+        gluEndSurface(nurbPergamino);      
+
+        
+        glDisable(GL_TEXTURE_2D);
+
+    glPopMatrix();
+}
+
+
+
+
 // ============================================================================
 // FUNCIONES PRINCIPALES Y CALLBACKS DE INTERACCION
 // ============================================================================
@@ -493,7 +608,7 @@ void display() {
     gluLookAt(eyeX, eyeY, eyeZ,      // Posición del ojo (cámara)
               0.0f, 0.0f, 0.0f,      // Mira hacia el origen (centro del mundo)
               0.0f, 1.0f, 0.0f);     // Vector "arriba" (eje Y positivo)
-                     
+                      
     //**Actualizamos la posicion de la luz cada frame**//
     glLightfv(GL_LIGHT0, GL_POSITION, lightPos); 
 
@@ -532,11 +647,11 @@ void display() {
     dibujarSkybox(); //dibujamos el entorno primero
     dibujarFoco(); //dibuja el foco
     dibujarPiso(); // Dibuja el plano base
-		   //
+           //
     dibujarSombraCaja(); //para dibujar la sombra de la caja //->importante aqui
     dibujarCaja(); //dibujamos la caja :D
     dibujarTapa(); // dibujamos la tapita de la caja
-		   
+    dibujarPanelesPuzzle(); //dibujamos los numeros del puzzle       
     dibujarReflejoMadera(); // <-- AQUI INYECTAS LA MAGIA
 
     dibujarToroide();      // ← dibujamos el toroide
@@ -612,7 +727,6 @@ void myReshape(int w, int h) {
 // Implementa Color Picking para cumplir el Punto 11 de la rúbrica
 // ============================================================================
 void procesarSeleccion(int x, int y) {
- 
     // 1. Apagamos todo lo que altere los colores puros
     glDisable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
@@ -639,8 +753,7 @@ void procesarSeleccion(int x, int y) {
     glPushMatrix();
         glTranslatef(0.0f, cajaAlto / 2.0f + 0.01f, 0.0f);
         
-        // ¡EL FIX GEOMÉTRICO! Dibujamos las 5 paredes huecas en lugar de un cubo sólido.
-        // Esto evita que la cámara choque con una "pared invisible" de clic al estar lejos.
+        // Dibujamos las 5 paredes huecas
         glBegin(GL_QUADS);
             // Frente
             glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
@@ -678,46 +791,110 @@ void procesarSeleccion(int x, int y) {
         glRotatef(-tapRotation, 0.0f, 0.0f, 1.0f);
         glTranslatef(-cajaAncho/2.0f, 0.0f, 0.0f);
         
-        glScalef(cajaAncho, 0.2f, cajaProfundo); // Una tapa simulada plana
+        glScalef(cajaAncho, 0.2f, cajaProfundo);
         glutSolidCube(1.0f);
     glPopMatrix();
 
     // --- LA GEMA -> Color AZUL PURO (0, 0, 255) ---
     glColor3ub(0, 0, 255);
     glPushMatrix();
-        // Posicionamos exactamente igual que en dibujarGema()
         glTranslatef(0.0f, 2.4f, 0.0f); 
-        
-        // Dibujamos la geometría básica sin texturas (hitbox perfecto)
         GLUquadricObj *qPick = gluNewQuadric();
         gluQuadricDrawStyle(qPick, GLU_FILL); // Sólido puro
         
-        // Corona (Cono superior)
         glPushMatrix();
             glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
             gluCylinder(qPick, 1.65f, 0.0f, 0.5f, 12, 2);
         glPopMatrix();
         
-        // Pabellón (Cono inferior)
         glPushMatrix();
             glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
             gluCylinder(qPick, 1.65f, 0.0f, 1.20f, 12, 2);
         glPopMatrix();
-        
         gluDeleteQuadric(qPick);
     glPopMatrix();
 
+    // >>> NUEVO CÓDIGO: HITBOXES PARA LOS NÚMEROS DEL PUZZLE
+    // Dibujamos 4 cuadrados sólidos e invisibles al ojo, pero detectables por glReadPixels
+    float alturaCentro = cajaAlto / 2.0f + 0.01f;
+
+   // Hitboxes cara +X (combinacion[0] y [1])
+   glPushMatrix();
+       glTranslatef(cajaAncho/2.0f + 0.05f, alturaCentro, 0.0f);
+       glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
+       glScalef(-1.0f, 1.0f, 1.0f);  // ← mismo scale que el visual para que coincidan las áreas de clic
+       for (int i = 0; i < 2; i++) {
+           glPushMatrix();
+               glTranslatef((i - 0.5f) * 1.85f, 0.5f, 0.0f);
+               glColor3ub(102 + i, 0, 0);
+               glBegin(GL_QUADS);
+                   glVertex3f(-0.55f, -0.6f, 0.0f);
+                   glVertex3f( 0.55f, -0.6f, 0.0f);
+                   glVertex3f( 0.55f,  1.0f, 0.0f);
+                   glVertex3f(-0.55f,  1.0f, 0.0f);
+               glEnd();
+           glPopMatrix();
+       }
+   glPopMatrix();
+
+   // Hitboxes cara -X (combinacion[2] y [3])
+   glPushMatrix();
+       glTranslatef(-cajaAncho/2.0f - 0.05f, alturaCentro, 0.0f);
+       glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+       glScalef(-1.0f, 1.0f, 1.0f);  // ← mismo scale que el visual para que coincidan las áreas de clic
+       for (int i = 2; i < 4; i++) {
+           glPushMatrix();
+               glTranslatef(((i-2) - 0.5f) * 1.85f, 0.5f, 0.0f);
+               glColor3ub(100 + (i-2), 0, 0);
+               glBegin(GL_QUADS);
+                   glVertex3f(-0.55f, -0.6f, 0.0f);
+                   glVertex3f( 0.55f, -0.6f, 0.0f);
+                   glVertex3f( 0.55f,  1.0f, 0.0f);
+                   glVertex3f(-0.55f,  1.0f, 0.0f);
+               glEnd();
+           glPopMatrix();
+       }
+   glPopMatrix();
+
+    
     // 5. LEER EL PÍXEL DONDE ESTÁ EL MOUSE
     unsigned char pixel[3];
-    // En OpenGL, la coordenada Y=0 es ABAJO, pero en GLUT Y=0 es ARRIBA. Hay que invertir Y.
     int viewportY = glutGet(GLUT_WINDOW_HEIGHT) - y; 
     glReadPixels(x, viewportY, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel);
 
-    // 6. LÓGICA DE LA RÚBRICA (PUNTO 11)
-    // Usamos rangos de tolerancia (> 200 y < 50) en lugar de valores exactos (== 255 y == 0)
-    // Esto hace que los clics en los bordes suavizados también cuenten.
-    if (pixel[0] > 200 && pixel[1] < 50 && pixel[2] < 50) {
-        // Clic en ROJO (La Tapa articulada)
+    // 6. LÓGICA DE SELECCIÓN (INCLUYE EL PUZZLE)
+    
+    // >>> NUEVO CÓDIGO: Evaluación del Puzzle Numérico
+    if (pixel[0] >= 100 && pixel[0] <= 103 && pixel[1] < 50 && pixel[2] < 50) {
+
+
+    int indice;
+    if (pixel[0] <= 101) indice = pixel[0] - 100 + 2;  // 100→2, 101→3
+    else indice = pixel[0] - 102;        // 102→0, 103→1 
+
+        combinacion[indice]++; // Incrementa el número
+        if (combinacion[indice] > 9) {
+            combinacion[indice] = 1; // Reseteo tipo candado de maleta
+        }
+        
+        printf("Numero %d ajustado a: %d\n", indice + 1, combinacion[indice]);
+	if (audioListo)
+        ma_engine_play_sound(&motorAudio, "assets/audio/numbers/simple_click.mp3", NULL);
+        
+        // Validación de código ganador: "1 - 2 - 3 - 4"
+        if (combinacion[0] == 1 && combinacion[1] == 2 && 
+            combinacion[2] == 3 && combinacion[3] == 4) {
+            
+            cajaDesbloqueada = true;
+            printf(">>> PUZZLE RESUELTO: Desplegando pergamino NURBS.\n");
+            
+            if (audioListo) { // Sonido de recompensa
+                ma_engine_play_sound(&motorAudio, "assets/audio/puzzle/space_advice_bassEfect.mp3", NULL);
+            }
+        }
+    }
+    // Lógica original de la tapa articulada
+    else if (pixel[0] > 200 && pixel[1] < 50 && pixel[2] < 50) {
         printf("Clic en la TAPA! Acelerando animacion.\n");
         tapRotationSpeed = velocidadRapida;
         tapIsOpening = !tapIsOpening; 
@@ -730,39 +907,32 @@ void procesarSeleccion(int x, int y) {
             }
         }
     } 
+    // Lógica original de la base
     else if (pixel[0] < 50 && pixel[1] > 200 && pixel[2] < 50) {
-        // Clic en VERDE (Cuerpo libre de la caja)
         printf("Clic en la BASE! Velocidad normal.\n");
         tapRotationSpeed = velocidadNormal;
     }
+    // Lógica original de la gema
     else if (pixel[0] < 50 && pixel[1] < 50 && pixel[2] > 200) {
-        // Clic en AZUL (El Diamante)
         printf("Clic en el DIAMANTE!\n");
-        
         if (audioListo) {
-            // Se genera un número aleatorio entre 1 y 5
             int randomNum = (rand() % 5) + 1; 
             char rutaSonido[100]; 
-            // Se ensambla la ruta dinámicamente
             sprintf(rutaSonido, "assets/audio/diamante/tocarDiamante%d.mp3", randomNum);
             ma_engine_play_sound(&motorAudio, rutaSonido, NULL);
         }
     }
     else {
-        // Clic en el vacío (Fondo negro u otro color mezclado)
         printf("Clic en el vacio.\n"); 
     }
     
     // 7. RESTAURAMOS EL ESTADO PARA QUE display() DIBUJE NORMAL
     glEnable(GL_LIGHTING);
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f); // Tu color de fondo original
-                      
-    // Restauramos el tramado (Dither) para que las texturas reales se vean bien
     glEnable(GL_DITHER); 
     
-    // EL FIX: Le damos la patada de arranque al motor de animación
+    // Disparamos un nuevo ciclo de renderizado para ver los cambios en los números
     glutPostRedisplay();
-
 }
 
 // ============================================================================
@@ -1348,16 +1518,16 @@ glPushAttrib(GL_ALL_ATTRIB_BITS);
             
             // ¡EL FIX! Coordenadas idénticas a dibujarCaja() para alinear las vetas
             glTexCoord2f(0.0f, 1.0f); 
-	    glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+        glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
             
-	    glTexCoord2f(1.0f, 1.0f); 
-	    glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+        glTexCoord2f(1.0f, 1.0f); 
+        glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
             
-	    glTexCoord2f(1.0f, 0.0f); 
-	    glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+        glTexCoord2f(1.0f, 0.0f); 
+        glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
             
-	    glTexCoord2f(0.0f, 0.0f); 
-	    glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+        glTexCoord2f(0.0f, 0.0f); 
+        glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
         glEnd();
     glPopMatrix();
 
@@ -1585,6 +1755,45 @@ GLuint cargarBMP(const char* ruta) {
     return idTextura;
 }
 
+/*
+ * Instanciacion del motor NURBS
+ * */
+void initNURBS() {
+    //nurbs = gluNewNurbsRenderer(); 
+    nurbPergamino = gluNewNurbsRenderer();
+    gluNurbsProperty(nurbPergamino, GLU_SAMPLING_TOLERANCE, 25.0);
+    gluNurbsProperty(nurbPergamino, GLU_DISPLAY_MODE, GLU_FILL);
+
+    //Mapeo topologico de la sabana de control Plano curvado
+    for (int u = 0 ; u < 4; u++) {
+    for (int v = 0; v < 4; v++) {
+        ctrlPointsNurbs[u][v][0] = 3.0f * ((GLfloat)u - 1.5f); // X
+        ctrlPointsNurbs[u][v][1] = 0.0f; // Y altura base
+        
+        //si son los puntos centrales, les damos altura para crear la curvatura del pergamino
+        if (u == 1 || u == 2) {
+        ctrlPointsNurbs[u][v][1] = 1.0f; 
+
+        }
+
+        ctrlPointsNurbs[u][v][2] = 3.0f * ((GLfloat)v - 1.5f); // Z
+    }
+
+
+
+    }
+    
+}
+
+
+
+
+
+
+
+
+
+
 // ============================================================================
 // FUNCIÓN: configurarOpenGL()
 // ============================================================================
@@ -1599,6 +1808,8 @@ void configurarOpenGL() {
     texturaTapaMadera = cargarBMP("assets/textures/madera/Wood_Tile.bmp");
     // Cargamos la textura de ORO
     texturaOro = cargarBMP("assets/textures/metal/metal_gold.bmp");
+    
+    texturaPapel = cargarBMP("assets/textures/papel/texture_paper_old.bmp");
 
     // Cargamos la textura del suelo donde esta apoyada la caja V:
     texturaPisoCristal = cargarBMP("assets/textures/cristal/glass_texture_pure.bmp");
@@ -1685,8 +1896,9 @@ void configurarOpenGL() {
     // 6. ORDEN DE VÉRTICES (Winding)
     // ------------------------------------------------------------------
     glFrontFace(GL_CCW);
-
-
+    
+    // Inicializar Motor NURBS
+    initNURBS();
     }
 
 // ============================================================================
@@ -1835,8 +2047,7 @@ int main(int argc, char** argv) {
  *
  *
  * glDisable(GL_TEXTURE_2D):
- * 
- * Resulta que OpenGL trabaja como una maquina de estados.
+ * * Resulta que OpenGL trabaja como una maquina de estados.
  * Si prendes la textura (glEnable) para dibujar una madera, la textura se
  * quedara pegada en la brocha de dibujo. Si no la apago despues de dibujar,
  * todo lo que dibuje a continuacion (como el foquito amarillo o las lineas de
@@ -1845,15 +2056,12 @@ int main(int argc, char** argv) {
 
  * glPushMatrix() y glPopMatrix():
  * Son como un "punto de guardado" para tus coordenadas del universo.
- * 
- * glPushMatrix() guarda como estan todos los ejes antes de que los toques.
+ * * glPushMatrix() guarda como estan todos los ejes antes de que los toques.
  * Despues de hacer glTranslate o glRotate (por ejemplo, para mover la tapa).
- * 
- * Al terminar, llamo a glPopMatrix() para regresar el universo a su estado
+ * * Al terminar, llamo a glPopMatrix() para regresar el universo a su estado
  * original. Si no lo uso, al rotar la tapa terminare rotando tambien el
  * piso entero, el foco y cualquier otra cosa que se dibuje despues.
- * 
- * glutPostRedisplay():
+ * * glutPostRedisplay():
  * Es la magia para que las cosas se muevan. Cuando cambio una variable (como
  * el angulo de la camara con el mouse o la animacion de la tapa), esa variable
  * por si sola no hace que la pantalla se actualice. glutPostRedisplay le avisa
@@ -1894,14 +2102,12 @@ int main(int argc, char** argv) {
  * al momento de pintar la sombra, OpenGL intentará multiplicar el color negro semitransparente por la
  * textura de madera de la tapa. El resultado es que tu sombra se vería como una mancha de madera deformada 
  * sobre el cristal. Al apagarla, garantizamos que sea un color negro puro.
- * 
- * glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);:
+ * * glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);:
  * Esta es la fórmula matemática de la transparencia.
 
  * GL_SRC_ALPHA: Toma el porcentaje Alfa (opacidad) del color que vas a pintar
  * (en nuestro caso 0.35f o 35% de negro).
- * 
- * GL_ONE_MINUS_SRC_ALPHA: Toma lo que sobra (1.0 - 0.35 = 0.65f o 65%) del color del píxel 
+ * * GL_ONE_MINUS_SRC_ALPHA: Toma lo que sobra (1.0 - 0.35 = 0.65f o 65%) del color del píxel 
  * que ya estaba en el fondo (el piso de cristal).
  *
  * OpenGL los suma, creando el efecto de que el cristal se oscurece un 35% pero sigues viendo a través de él.
@@ -1912,7 +2118,7 @@ int main(int argc, char** argv) {
  *
  *
  *
- *  CONCEPTO:
+ * CONCEPTO:
  * miniaudio.h es una maravilla de la ingeniería en C. Es una librería single-header, lo que significa 
  * que todo su código fuente (declaraciones e implementaciones) vive dentro de un único archivo .h. Para
  * decirle al compilador g++ que no solo lea las definiciones, sino que también compile el código interno 
@@ -1921,5 +2127,3 @@ int main(int argc, char** argv) {
  *
  *
 */
-
-
