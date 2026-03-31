@@ -1326,20 +1326,24 @@ void dibujarReflejoMadera() {
     // B) Activamos la iluminación para que la capa superior brille
     glEnable(GL_LIGHTING);   
     glDisable(GL_TEXTURE_2D); // Sin textura, solo color puro
+    glBindTexture(GL_TEXTURE_2D, texturaMaderaCaja); //recuperamos la textura de madera
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
     // C) Material del barniz: Muy pulido y reflectante (brillo blanco intenso)
     GLfloat barnizEspecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    GLfloat barnizBrillo[]    = { 128.0f }; // Concentración máxima del destello
+    GLfloat barnizBrillo[]    = { 100.0f }; 
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, barnizEspecular);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, barnizBrillo);
 
-    // D) Tinte café oscuro, un poco más transparente (40%) para dejar ver la madera
-    glColor4f(0.1f, 0.05f, 0.02f, 0.40f); 
+    // D) color blanco para no pintar la textura con 80% de opacidad
+    // si no se ve el reflejo podemos bajar la opacidad a 0.70f 
+    // si se ve muy falso podemos subirla a 0.90f
+    glColor4f(0.1f, 1.0f, 1.0f, 0.80f); 
     
     glPushMatrix();
-        // Lo dibujamos un milímetro arriba del piso
+        // Lo dibujamos un milímetro , un pelin , arriba del piso
         glTranslatef(0.0f , cajaAlto / 2.0f + 0.015f , 0.0f);
         glBegin(GL_QUADS);
             // ¡VITAL! La normal debe apuntar hacia ARRIBA (+Y) para que intercepte la luz del foco
