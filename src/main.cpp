@@ -13,7 +13,11 @@
  * 5.- Limpieza de código y organización
  * 6.- Implementacion del sistema de puzle Temporal
  * 7.- [MERGE] Quadrics globales para eficiencia + restauracion de estandarte,
- *     material del pergamino, guard del reflejo y animacion bajo demanda (fix CPU)
+ * material del pergamino, guard del reflejo y animacion bajo demanda (fix CPU)
+ * 8.- [FIX] Blindaje de Máquina de Estados (Picking) y Optimización Geométrica.
+ * 9.- [FIX CRÍTICO] Eliminacion de GL_ALL_ATTRIB_BITS en el Render Loop para evitar
+ * saturacion del driver Mesa (AMD) y prevenir freezes durante el movimiento de camara.
+ * 10.- [RESTORE] Se restauraron las funciones de dibujo estáticas (Caja, Skybox, Piso, Tapa).
  */
 
 // ============================================================================
@@ -65,10 +69,10 @@ bool cajaDesbloqueada     = false;
 GLUnurbsObj* nurbPergamino = NULL;
 GLfloat ctrlPointsNurbs[4][4][3];   // Puntos de control del pergamino
 
-// >>> RESTAURADO: Puntos de control del estandarte (bandera)
+// Puntos de control del estandarte (bandera)
 GLfloat ctrlPointsBanner[4][4][3];
 
-// >>> OPTIMIZACIÓN: Quadrics globales — se crean UNA sola vez
+// Quadrics globales — se crean UNA sola vez
 GLUquadricObj* qGema       = NULL;
 GLUquadricObj* qPatas      = NULL;
 GLUquadricObj* qPicking    = NULL;
@@ -112,7 +116,7 @@ void dibujarPatasToroide();
 void dibujarGema();
 void dibujarPanelesPuzzle();
 void dibujarPergamino();
-void dibujarEstandarte();   // >>> RESTAURADO
+void dibujarEstandarte();
 
 void display();
 void myReshape(int w, int h);
@@ -177,7 +181,9 @@ void dibujarToroide() {
     glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
 
     glColor3f(1.0f, 0.84f, 0.0f);
-    glutSolidTorus(0.135f, 1.4f, 20, 72);
+    
+    // [FIX DE RENDIMIENTO] Reducción de polígonos del toroide (de 20x72 a 12x36).
+    glutSolidTorus(0.135f, 1.4f, 12, 36);
 
     glDisable(GL_TEXTURE_GEN_S);
     glDisable(GL_TEXTURE_GEN_T);
@@ -215,20 +221,21 @@ void dibujarGema() {
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(1.0f, 1.0f);
 
-    // Reutilizamos el quadric global
+    // [FIX DE ESTADO] Aseguramos que la gema sólida siempre se dibuje con FILL
     gluQuadricDrawStyle(qGema, GLU_FILL);
 
     float R  = gemaRadius;
     float h1 = 0.5f;
     float h2 = 1.20f;
 
+    // [FIX DE RENDIMIENTO] Reducción de segmentos a 16
     glPushMatrix();
         glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
-        gluCylinder(qGema, R, 0.0f, h1, 24, 4);
+        gluCylinder(qGema, R, 0.0f, h1, 16, 4);
     glPopMatrix();
     glPushMatrix();
         glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-        gluCylinder(qGema, R, 0.0f, h2, 24, 4);
+        gluCylinder(qGema, R, 0.0f, h2, 16, 4);
     glPopMatrix();
 
     glDisable(GL_POLYGON_OFFSET_FILL);
@@ -238,20 +245,26 @@ void dibujarGema() {
     glDisable(GL_TEXTURE_2D);
 
     // --- PARTE 2: Aristas ---
+    // Protegemos el estado de línea y luces para el resto del programa
     glPushAttrib(GL_LIGHTING_BIT | GL_LINE_BIT | GL_CURRENT_BIT);
     glDisable(GL_LIGHTING);
     glLineWidth(2.0f);
     glColor4f(0.3f, 0.6f, 1.0f, 0.20f);
+    
+    // Cambiamos a líneas
     gluQuadricDrawStyle(qGema, GLU_LINE);
 
     glPushMatrix();
         glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
-        gluCylinder(qGema, R, 0.0f, h1, 24, 4);
+        gluCylinder(qGema, R, 0.0f, h1, 16, 4);
     glPopMatrix();
     glPushMatrix();
         glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-        gluCylinder(qGema, R, 0.0f, h2, 24, 4);
+        gluCylinder(qGema, R, 0.0f, h2, 16, 4);
     glPopMatrix();
+
+    // [FIX DE ESTADO] Restauramos el quadric global a FILL para otros usos
+    gluQuadricDrawStyle(qGema, GLU_FILL);
 
     glPopAttrib();
     glDisable(GL_BLEND);
@@ -296,24 +309,21 @@ void dibujarPatasToroide() {
 
 
 void dibujarPanelesPuzzle() {
-    // >>> RESTAURADO al estilo antiguo: 2 números por cara lateral (±X)
     glPushAttrib(GL_LIGHTING_BIT | GL_CURRENT_BIT | GL_LINE_BIT);
     glDisable(GL_LIGHTING);
     glLineWidth(2.5f);
 
-    // Textura de oro con sphere map para los números
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, texturaOro);
     glEnable(GL_TEXTURE_GEN_S);
     glEnable(GL_TEXTURE_GEN_T);
     glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
     glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
-    glColor3f(1.0f, 0.84f, 0.0f); // dorado
+    glColor3f(1.0f, 0.84f, 0.0f);
 
-    float alturaCentro = cajaAlto / 2.0f + 0.01f; // mismo offset que dibujarCaja()
-    float offsetZ = 0.01f; // milímetro fuera de la madera para evitar z-fighting
+    float alturaCentro = cajaAlto / 2.0f + 0.01f; 
+    float offsetZ = 0.01f; 
 
-    // ========== CARA DERECHA (+X) — combinacion[0] y [1] ==========
     glPushMatrix();
         glTranslatef(cajaAncho/2.0f + offsetZ, alturaCentro - 0.08f, 0.0f);
         glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
@@ -329,7 +339,6 @@ void dibujarPanelesPuzzle() {
         }
     glPopMatrix();
 
-    // ========== CARA IZQUIERDA (-X) — combinacion[2] y [3] ==========
     glPushMatrix();
         glTranslatef(-cajaAncho/2.0f - offsetZ, alturaCentro - 0.08f, 0.0f);
         glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
@@ -358,7 +367,6 @@ void dibujarPergamino() {
     glPushMatrix();
     glTranslatef(0.0f, 6.0f, 0.0f);
 
-    // >>> RESTAURADO: Material correcto — sin esto el NURBS se pinta negro
     glColor3f(1.0f, 1.0f, 1.0f);
     GLfloat matAmbiente[]  = { 0.8f, 0.7f, 0.5f, 1.0f };
     GLfloat matDifuso[]    = { 1.0f, 0.9f, 0.7f, 1.0f };
@@ -385,7 +393,6 @@ void dibujarPergamino() {
     gluEndSurface(nurbPergamino);
 
     glDisable(GL_AUTO_NORMAL);
-    // >>> RESTAURADO: Respetamos la tecla F1 del usuario
     if (bCull) glEnable(GL_CULL_FACE);
     glDisable(GL_TEXTURE_2D);
 
@@ -393,10 +400,6 @@ void dibujarPergamino() {
 }
 
 
-// ============================================================================
-// >>> RESTAURADO COMPLETO: dibujarEstandarte()
-// Palo dorado con bandera NURBS de papel — aparece al resolver el puzzle
-// ============================================================================
 void dibujarEstandarte() {
     if (!cajaDesbloqueada) return;
 
@@ -407,7 +410,6 @@ void dibujarEstandarte() {
     glPushMatrix();
     glTranslatef(0.0f, 0.01f, polZ);
 
-    // ---- PARTE 1: El palo dorado ----
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, texturaOro);
     glEnable(GL_TEXTURE_GEN_S);
@@ -424,7 +426,6 @@ void dibujarEstandarte() {
         gluCylinder(qPalo, polRadio, polRadio * 0.6f, polAltura, 12, 4);
     glPopMatrix();
 
-    // Bolita decorativa en la punta
     glTranslatef(0.0f, polAltura, 0.0f);
     gluQuadricDrawStyle(qBolita, GLU_FILL);
     gluQuadricNormals(qBolita, GLU_SMOOTH);
@@ -434,7 +435,6 @@ void dibujarEstandarte() {
     glDisable(GL_TEXTURE_GEN_T);
     glDisable(GL_TEXTURE_2D);
 
-    // ---- PARTE 2: La bandera NURBS ----
     GLfloat matAmb[]  = { 0.75f, 0.65f, 0.45f, 1.0f };
     GLfloat matDif[]  = { 1.0f,  0.90f, 0.70f, 1.0f };
     GLfloat matSpec[] = { 0.15f, 0.15f, 0.15f, 1.0f };
@@ -471,338 +471,162 @@ void dibujarEstandarte() {
     glPopMatrix();
 }
 
-
 // ============================================================================
-// FUNCIÓN: display()
+// FUNCIONES CON SOLUCIÓN DEL BUG (REFLEJO Y SOMBRAS)
 // ============================================================================
-void display() {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    glLoadIdentity();
+void dibujarReflejoMadera() {
+    if (tapRotation < 20.0f) return;
 
-    if (bCull)      glEnable(GL_CULL_FACE);      else glDisable(GL_CULL_FACE);
-    if (bDepth)     glEnable(GL_DEPTH_TEST);      else glDisable(GL_DEPTH_TEST);
-    if (bWireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    else            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    if (bSmooth)    glShadeModel(GL_SMOOTH);      else glShadeModel(GL_FLAT);
+    glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT | GL_LIGHTING_BIT | GL_COLOR_BUFFER_BIT | GL_POLYGON_BIT);
 
-    // ------ CÁMARA ------
-    float rX = camAngleX * 0.01745f;
-    float rY = camAngleY * 0.01745f;
-    float eyeX = camDist * sin(rX) * cos(rY);
-    float eyeY = camDist * sin(rY);
-    float eyeZ = camDist * cos(rX) * cos(rY);
-    gluLookAt(eyeX, eyeY, eyeZ,
-              0.0f, 0.0f, 0.0f,
-              0.0f, 1.0f, 0.0f);
+    glClear(GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, 1, 1);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
-    glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDepthMask(GL_FALSE);
+    glDepthFunc(GL_LEQUAL);
 
-    // ------ ANIMACIÓN DE TAPA (solo pide redibujado cuando hay movimiento) ------
-    if (tapIsOpening) {
-        if (tapRotation < tapMaxRotation) {
-            tapRotation += tapRotationSpeed;
-            glutPostRedisplay(); // Solo pide el siguiente frame si aún se mueve
-        }
-    } else {
-        if (tapRotation > 0.0f) {
-            tapRotation -= tapRotationSpeed;
-            glutPostRedisplay();
-        }
-    }
-
-    // ------ RENDERIZADO ------
-    dibujarSkybox();
-    dibujarFoco();
-    dibujarPiso();
-    dibujarSombraCaja();
-    dibujarCaja();
-    dibujarTapa();
-    dibujarPanelesPuzzle();
-    dibujarReflejoMadera();
-    dibujarToroide();
-    dibujarPatasToroide();
-    dibujarGema();
-    // dibujarPergamino() eliminado — el estandarte es la recompensa visual del puzzle
-    dibujarEstandarte();
-
-    glutSwapBuffers();
-}
-
-
-// ============================================================================
-// FUNCIÓN: myReshape()
-// ============================================================================
-void myReshape(int w, int h) {
-    glViewport(0, 0, w, h);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(60.0f, (float)w / h, 1.0f, 2000.0f);
-    glMatrixMode(GL_MODELVIEW);
-}
-
-
-// ============================================================================
-// FUNCIÓN: procesarSeleccion() — Color Picking
-// ============================================================================
-void procesarSeleccion(int x, int y) {
-    glDisable(GL_LIGHTING);
-    glDisable(GL_TEXTURE_2D);
-    glDisable(GL_BLEND);
-    glDisable(GL_DITHER);
-
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    glLoadIdentity();
-    float rX = camAngleX * 0.01745f;
-    float rY = camAngleY * 0.01745f;
-    float eyeX = camDist * sin(rX) * cos(rY);
-    float eyeY = camDist * sin(rY);
-    float eyeZ = camDist * cos(rX) * cos(rY);
-    gluLookAt(eyeX, eyeY, eyeZ, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-
-    // --- BASE (Verde) ---
-    glColor3ub(0, 255, 0);
     glPushMatrix();
-        glTranslatef(0.0f, cajaAlto / 2.0f + 0.01f, 0.0f);
+        glTranslatef(0.0f, cajaAlto/2.0f + 0.01f, 0.0f);
         glBegin(GL_QUADS);
-            glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f( cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f( cajaAncho/2.0f,  cajaAlto/2.0f, cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, cajaProfundo/2.0f);
-            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f,  cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
-            glVertex3f(cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f(cajaAncho/2.0f,  cajaAlto/2.0f,  cajaProfundo/2.0f);
-            glVertex3f(cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
-            glVertex3f(cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
-            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+            glVertex3f( cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+            glVertex3f( cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+            glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
         glEnd();
     glPopMatrix();
 
-    // --- TAPA (Rojo) ---
-    glColor3ub(255, 0, 0);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glStencilFunc(GL_EQUAL, 1, 1);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glDisable(GL_DEPTH_TEST);
+
+    GLfloat luzTenue[] = { 0.2f, 0.2f, 0.25f, 1.0f };
+    glLightfv(GL_LIGHT0, GL_DIFFUSE,  luzTenue);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, luzTenue);
+
     glPushMatrix();
-        glTranslatef(0.0f, cajaAlto + 0.01f, 0.0f);
-        glTranslatef(cajaAncho/2.0f, 0.0f, 0.0f);
-        glRotatef(-tapRotation, 0.0f, 0.0f, 1.0f);
-        glTranslatef(-cajaAncho/2.0f, 0.0f, 0.0f);
-        glScalef(cajaAncho, 0.2f, cajaProfundo);
-        glutSolidCube(1.0f);
+        glTranslatef(0.0f,  0.01f, 0.0f);
+        glScalef(1.0f, -1.0f, 1.0f);
+        glTranslatef(0.0f, -0.01f, 0.0f);
+        glFrontFace(GL_CW);
+        dibujarToroide();
+        dibujarPatasToroide();
+        dibujarGema();
     glPopMatrix();
 
-    // --- GEMA (Azul) ---
-    glColor3ub(0, 0, 255);
-    glPushMatrix();
-        glTranslatef(0.0f, 2.4f, 0.0f);
-        gluQuadricDrawStyle(qPicking, GLU_FILL);
-        glPushMatrix();
-            glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
-            gluCylinder(qPicking, 1.65f, 0.0f, 0.5f, 12, 2);
-        glPopMatrix();
-        glPushMatrix();
-            glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-            gluCylinder(qPicking, 1.65f, 0.0f, 1.20f, 12, 2);
-        glPopMatrix();
-    glPopMatrix();
+    GLfloat luzDifNormal[]  = { 1.0f, 1.0f, 0.95f, 1.0f };
+    GLfloat luzSpecNormal[] = { 0.8f, 0.8f, 0.80f, 1.0f };
+    glLightfv(GL_LIGHT0, GL_DIFFUSE,  luzDifNormal);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, luzSpecNormal);
 
-    // --- HITBOXES DE NÚMEROS — cara +X y cara -X (igual que el visual) ---
-    float alturaCentro = cajaAlto / 2.0f + 0.01f;
-
-    // Hitboxes cara +X (combinacion[0] y [1]) → colores 102 y 103
-    glPushMatrix();
-        glTranslatef(cajaAncho/2.0f + 0.05f, alturaCentro, 0.0f);
-        glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
-        glScalef(-1.0f, 1.0f, 1.0f);
-        for (int i = 0; i < 2; i++) {
-            glPushMatrix();
-                glTranslatef((i - 0.5f) * 1.85f, 0.5f, 0.0f);
-                glColor3ub(102 + i, 0, 0); // 102→combinacion[0], 103→combinacion[1]
-                glBegin(GL_QUADS);
-                    glVertex3f(-0.55f, -0.6f, 0.0f);
-                    glVertex3f( 0.55f, -0.6f, 0.0f);
-                    glVertex3f( 0.55f,  1.0f, 0.0f);
-                    glVertex3f(-0.55f,  1.0f, 0.0f);
-                glEnd();
-            glPopMatrix();
-        }
-    glPopMatrix();
-
-    // Hitboxes cara -X (combinacion[2] y [3]) → colores 100 y 101
-    glPushMatrix();
-        glTranslatef(-cajaAncho/2.0f - 0.05f, alturaCentro, 0.0f);
-        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
-        glScalef(-1.0f, 1.0f, 1.0f);
-        for (int i = 2; i < 4; i++) {
-            glPushMatrix();
-                glTranslatef(((i-2) - 0.5f) * 1.85f, 0.5f, 0.0f);
-                glColor3ub(100 + (i-2), 0, 0); // 100→combinacion[2], 101→combinacion[3]
-                glBegin(GL_QUADS);
-                    glVertex3f(-0.55f, -0.6f, 0.0f);
-                    glVertex3f( 0.55f, -0.6f, 0.0f);
-                    glVertex3f( 0.55f,  1.0f, 0.0f);
-                    glVertex3f(-0.55f,  1.0f, 0.0f);
-                glEnd();
-            glPopMatrix();
-        }
-    glPopMatrix();
-
-    // --- HITBOX ESTANDARTE (Magenta) ---
-    if (cajaDesbloqueada) {
-        glColor3ub(200, 0, 200);
-        float polZ      = cajaProfundo / 2.0f + 3.5f;
-        float polAltura = 4.5f;
-        glPushMatrix();
-            glTranslatef(0.0f, polAltura - 1.25f, polZ - 1.5f);
-            glScalef(0.5f, 2.5f, 3.5f);
-            glutSolidCube(1.0f);
-        glPopMatrix();
-    }
-
-    // --- LEER EL PÍXEL ---
-    unsigned char pixel[3];
-    int viewportY = glutGet(GLUT_WINDOW_HEIGHT) - y;
-    glReadPixels(x, viewportY, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel);
-
-    // --- LÓGICA DE SELECCIÓN ---
-    // Colores 100/101 → cara -X → combinacion[2] y [3]
-    // Colores 102/103 → cara +X → combinacion[0] y [1]
-    if (pixel[0] >= 100 && pixel[0] <= 103 && pixel[1] < 50 && pixel[2] < 50) {
-        int indice;
-        if (pixel[0] <= 101) indice = pixel[0] - 100 + 2; // 100→2, 101→3
-        else                 indice = pixel[0] - 102;      // 102→0, 103→1
-        combinacion[indice]++;
-        if (combinacion[indice] > 9) combinacion[indice] = 1;
-
-        printf("Numero %d ajustado a: %d\n", indice + 1, combinacion[indice]);
-        if (audioListo)
-            ma_engine_play_sound(&motorAudio, "assets/audio/numbers/simple_click.mp3", NULL);
-
-        if (combinacion[0]==1 && combinacion[1]==2 &&
-            combinacion[2]==3 && combinacion[3]==4) {
-            cajaDesbloqueada = true;
-            printf(">>> PUZZLE RESUELTO!\n");
-            if (audioListo)
-                ma_engine_play_sound(&motorAudio, "assets/audio/puzzle/space_advice_bassEfect.mp3", NULL);
-        }
-    }
-    else if (pixel[0] > 200 && pixel[1] < 50 && pixel[2] < 50) {
-        printf("Clic en la TAPA!\n");
-        tapRotationSpeed = velocidadRapida;
-        tapIsOpening = !tapIsOpening;
-        if (audioListo) {
-            if (tapIsOpening) ma_engine_play_sound(&motorAudio, "assets/audio/cofre/abrirCofre.mp3", NULL);
-            else              ma_engine_play_sound(&motorAudio, "assets/audio/cofre/cerrarCofre.mp3", NULL);
-        }
-    }
-    else if (pixel[0] < 50 && pixel[1] > 200 && pixel[2] < 50) {
-        printf("Clic en la BASE! Velocidad normal.\n");
-        tapRotationSpeed = velocidadNormal;
-    }
-    else if (pixel[0] < 50 && pixel[1] < 50 && pixel[2] > 200) {
-        printf("Clic en el DIAMANTE!\n");
-        if (audioListo) {
-            int randomNum = (rand() % 5) + 1;
-            char rutaSonido[100];
-            sprintf(rutaSonido, "assets/audio/diamante/tocarDiamante%d.mp3", randomNum);
-            ma_engine_play_sound(&motorAudio, rutaSonido, NULL);
-        }
-    }
-    else if (pixel[0] > 150 && pixel[0] < 220 && pixel[1] < 50 && pixel[2] > 150) {
-        printf("Clic en el ESTANDARTE!\n");
-        if (audioListo)
-            ma_engine_play_sound(&motorAudio, "assets/audio/numbers/simple_click.mp3", NULL);
-    }
-    else {
-        printf("Clic en el vacio.\n");
-    }
-
-    // --- RESTAURAR ESTADO ---
     glEnable(GL_LIGHTING);
-    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-    glEnable(GL_DITHER);
-    glutPostRedisplay();
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texturaMaderaCaja);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    GLfloat barnizEspecular[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+    GLfloat barnizBrillo[]    = { 80.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,  barnizEspecular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, barnizBrillo);
+    glColor4f(1.0f, 1.0f, 1.0f, 0.80f);
+
+    glPushMatrix();
+        glTranslatef(0.0f, cajaAlto/2.0f + 0.015f, 0.0f);
+        glBegin(GL_QUADS);
+            glNormal3f(0,1,0);
+            glTexCoord2f(0,1); glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+            glTexCoord2f(1,1); glVertex3f( cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+            glTexCoord2f(1,0); glVertex3f( cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+            glTexCoord2f(0,0); glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+        glEnd();
+    glPopMatrix();
+
+    glPopAttrib();
+}
+
+
+void dibujarSombraCaja() {
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, 1, 1);
+    glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDepthMask(GL_FALSE);
+    glBegin(GL_QUADS);
+        glNormal3f(0,1,0);
+        glVertex3f(-30.0f, 0.0f,-30.0f);
+        glVertex3f(-30.0f, 0.0f, 30.0f);
+        glVertex3f( 30.0f, 0.0f, 30.0f);
+        glVertex3f( 30.0f, 0.0f,-30.0f);
+    glEnd();
+    glDepthMask(GL_TRUE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    glStencilFunc(GL_EQUAL, 1, 1);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_ZERO);
+    
+    glPushAttrib(GL_ENABLE_BIT | GL_DEPTH_BUFFER_BIT | GL_LIGHTING_BIT | GL_COLOR_BUFFER_BIT | GL_POLYGON_BIT);
+    
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4f(0.0f, 0.0f, 0.0f, 0.35f);
+
+    GLfloat planeEquation[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
+    GLfloat lightPosArray[4] = { lightPos[0], lightPos[1], lightPos[2], lightPos[3] };
+    GLfloat shadowMatrix[16];
+    gltMakeShadowMatrix(planeEquation, lightPosArray, shadowMatrix);
+
+    glPushMatrix();
+        glMultMatrixf(shadowMatrix);
+        glPushMatrix();
+            glTranslatef(0.0f, cajaAlto/2.0f + 0.01f, 0.0f);
+            glBegin(GL_QUADS);
+                glVertex3f(-cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
+                glVertex3f( cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
+                glVertex3f( cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+                glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+                glVertex3f( cajaAncho/2, cajaAlto/2, cajaProfundo/2);
+                glVertex3f(-cajaAncho/2, cajaAlto/2, cajaProfundo/2);
+                glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+                glVertex3f( cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+                glVertex3f(-cajaAncho/2, cajaAlto/2, cajaProfundo/2);
+                glVertex3f(-cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
+                glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+                glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+                glVertex3f(cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
+                glVertex3f(cajaAncho/2, cajaAlto/2, cajaProfundo/2);
+                glVertex3f(cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+                glVertex3f(cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+            glEnd();
+        glPopMatrix();
+        glPushMatrix();
+            glTranslatef(0.0f, cajaAlto + 0.01f, 0.0f);
+            glTranslatef(cajaAncho/2.0f, 0.0f, 0.0f);
+            glRotatef(-tapRotation, 0.0f, 0.0f, 1.0f);
+            glTranslatef(-cajaAncho/2.0f, 0.0f, 0.0f);
+            glBegin(GL_QUADS);
+                glVertex3f(-cajaAncho/2, 0, cajaProfundo/2);
+                glVertex3f( cajaAncho/2, 0, cajaProfundo/2);
+                glVertex3f( cajaAncho/2, 0,-cajaProfundo/2);
+                glVertex3f(-cajaAncho/2, 0,-cajaProfundo/2);
+            glEnd();
+        glPopMatrix();
+    glPopMatrix();
+
+    glPopAttrib();
+    glDisable(GL_STENCIL_TEST);
 }
 
 
 // ============================================================================
-// CALLBACKS DE TECLADO Y MOUSE
-// ============================================================================
-void teclado(unsigned char key, int x, int y) {
-    switch (key) {
-        case 'w': case 'W': if (camDist > 5.0f) camDist -= 1.0f; break;
-        case 's': case 'S': camDist += 1.0f; break;
-        case 'c': case 'C': bCull      = !bCull;      break;
-        case 'd': case 'D': bDepth     = !bDepth;     break;
-        case 'z': case 'Z': bWireframe = !bWireframe; break;
-        case 'x': case 'X': bSmooth    = !bSmooth;    break;
-        case '8': lightPos[2] -= 0.5f; break;
-        case '2': lightPos[2] += 0.5f; break;
-        case '6': lightPos[0] += 0.5f; break;
-        case '4': lightPos[0] -= 0.5f; break;
-        case '1': lightPos[1] += 0.5f; break;
-        case '0': if (lightPos[1] > 0.5f) lightPos[1] -= 0.5f; break;
-        case ' ':
-            tapIsOpening = !tapIsOpening;
-            glutPostRedisplay();
-            break;
-        case 27: exit(0); break;
-    }
-    glutPostRedisplay();
-}
-
-void tecladoEspecial(int key, int x, int y) {
-    switch (key) {
-        case GLUT_KEY_LEFT:  camAngleX -= 3.0f; break;
-        case GLUT_KEY_RIGHT: camAngleX += 3.0f; break;
-        case GLUT_KEY_UP:    if (camAngleY < 89.0f) camAngleY += 3.0f; break;
-        case GLUT_KEY_DOWN:  if (camAngleY >  1.0f) camAngleY -= 3.0f; break;
-        case GLUT_KEY_F1: bCull      = !bCull;      break;
-        case GLUT_KEY_F2: bDepth     = !bDepth;     break;
-        case GLUT_KEY_F3: bWireframe = !bWireframe; break;
-        case GLUT_KEY_F4: bSmooth    = !bSmooth;    break;
-    }
-    glutPostRedisplay();
-}
-
-void mouseBoton(int boton, int estado, int x, int y) {
-    if (boton == GLUT_LEFT_BUTTON) {
-        if (estado == GLUT_DOWN) {
-            mousePresionado = true;
-            lastMouseX = x;
-            lastMouseY = y;
-            procesarSeleccion(x, y);
-        } else {
-            mousePresionado = false;
-        }
-    }
-    if (boton == 3 && estado == GLUT_DOWN) { if (camDist > 5.0f) camDist -= 1.0f; glutPostRedisplay(); }
-    if (boton == 4 && estado == GLUT_DOWN) { camDist += 1.0f; glutPostRedisplay(); }
-}
-
-void mouseMovimiento(int x, int y) {
-    if (!mousePresionado) return;
-    camAngleX += (x - lastMouseX) * 0.4f;
-    camAngleY += (y - lastMouseY) * 0.4f;
-    if (camAngleY >  89.0f) camAngleY =  89.0f;
-    if (camAngleY <   1.0f) camAngleY =   1.0f;
-    lastMouseX = x;
-    lastMouseY = y;
-    glutPostRedisplay();
-}
-
-
-// ============================================================================
-// OBJETOS DE LA ESCENA
+// OBJETOS DE LA ESCENA (RESTAURADOS)
 // ============================================================================
 void dibujarFoco() {
     glPushMatrix();
@@ -929,159 +753,326 @@ void dibujarTapa() {
 
 
 // ============================================================================
-// FUNCIÓN: dibujarReflejoMadera()
-// >>> FIX RESTAURADO: guard de tapa cerrada para no correr el stencil en balde
+// FUNCIÓN: display()
 // ============================================================================
-void dibujarReflejoMadera() {
-    // >>> FIX: Si la tapa está casi cerrada, no hay nada que reflejar
-    if (tapRotation < 20.0f) return;
+void display() {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glLoadIdentity();
 
-    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    if (bCull)      glEnable(GL_CULL_FACE);      else glDisable(GL_CULL_FACE);
+    if (bDepth)     glEnable(GL_DEPTH_TEST);      else glDisable(GL_DEPTH_TEST);
+    if (bWireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    else            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    if (bSmooth)    glShadeModel(GL_SMOOTH);      else glShadeModel(GL_FLAT);
 
-    glClear(GL_STENCIL_BUFFER_BIT);
-    glEnable(GL_STENCIL_TEST);
-    glStencilFunc(GL_ALWAYS, 1, 1);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    // ------ CÁMARA ------
+    float rX = camAngleX * 0.01745f;
+    float rY = camAngleY * 0.01745f;
+    float eyeX = camDist * sin(rX) * cos(rY);
+    float eyeY = camDist * sin(rY);
+    float eyeZ = camDist * cos(rX) * cos(rY);
+    gluLookAt(eyeX, eyeY, eyeZ,
+              0.0f, 0.0f, 0.0f,
+              0.0f, 1.0f, 0.0f);
 
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    glDepthMask(GL_FALSE);
-    glDepthFunc(GL_LEQUAL);
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
 
-    // Máscara: fondo interior de la caja
-    glPushMatrix();
-        glTranslatef(0.0f, cajaAlto/2.0f + 0.01f, 0.0f);
-        glBegin(GL_QUADS);
-            glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
-            glVertex3f( cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
-            glVertex3f( cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
-            glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
-        glEnd();
-    glPopMatrix();
+    // ------ ANIMACIÓN DE TAPA ------
+    if (tapIsOpening) {
+        if (tapRotation < tapMaxRotation) {
+            tapRotation += tapRotationSpeed;
+            glutPostRedisplay();
+        }
+    } else {
+        if (tapRotation > 0.0f) {
+            tapRotation -= tapRotationSpeed;
+            glutPostRedisplay();
+        }
+    }
 
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glStencilFunc(GL_EQUAL, 1, 1);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-    glDisable(GL_DEPTH_TEST);
+    // ------ RENDERIZADO ------
+    dibujarSkybox();
+    dibujarFoco();
+    dibujarPiso();
+    dibujarSombraCaja();
+    dibujarCaja();
+    dibujarTapa();
+    dibujarPanelesPuzzle();
+    dibujarReflejoMadera();
+    dibujarToroide();
+    dibujarPatasToroide();
+    dibujarGema();
+    dibujarEstandarte();
 
-    GLfloat luzTenue[] = { 0.2f, 0.2f, 0.25f, 1.0f };
-    glLightfv(GL_LIGHT0, GL_DIFFUSE,  luzTenue);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, luzTenue);
-
-    glPushMatrix();
-        glTranslatef(0.0f,  0.01f, 0.0f);
-        glScalef(1.0f, -1.0f, 1.0f);
-        glTranslatef(0.0f, -0.01f, 0.0f);
-        glFrontFace(GL_CW);
-        dibujarToroide();
-        dibujarPatasToroide();
-        dibujarGema();
-    glPopMatrix();
-
-    GLfloat luzDifNormal[]  = { 1.0f, 1.0f, 0.95f, 1.0f };
-    GLfloat luzSpecNormal[] = { 0.8f, 0.8f, 0.80f, 1.0f };
-    glLightfv(GL_LIGHT0, GL_DIFFUSE,  luzDifNormal);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, luzSpecNormal);
-
-    glEnable(GL_LIGHTING);
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, texturaMaderaCaja);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    GLfloat barnizEspecular[] = { 0.5f, 0.5f, 0.5f, 1.0f };
-    GLfloat barnizBrillo[]    = { 80.0f };
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,  barnizEspecular);
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, barnizBrillo);
-    glColor4f(1.0f, 1.0f, 1.0f, 0.80f);
-
-    glPushMatrix();
-        glTranslatef(0.0f, cajaAlto/2.0f + 0.015f, 0.0f);
-        glBegin(GL_QUADS);
-            glNormal3f(0,1,0);
-            glTexCoord2f(0,1); glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
-            glTexCoord2f(1,1); glVertex3f( cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
-            glTexCoord2f(1,0); glVertex3f( cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
-            glTexCoord2f(0,0); glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
-        glEnd();
-    glPopMatrix();
-
-    glPopAttrib();
+    glutSwapBuffers();
 }
 
 
-void dibujarSombraCaja() {
-    glEnable(GL_STENCIL_TEST);
-    glStencilFunc(GL_ALWAYS, 1, 1);
-    glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    glDepthMask(GL_FALSE);
-    glBegin(GL_QUADS);
-        glNormal3f(0,1,0);
-        glVertex3f(-30.0f, 0.0f,-30.0f);
-        glVertex3f(-30.0f, 0.0f, 30.0f);
-        glVertex3f( 30.0f, 0.0f, 30.0f);
-        glVertex3f( 30.0f, 0.0f,-30.0f);
-    glEnd();
-    glDepthMask(GL_TRUE);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+// ============================================================================
+// FUNCIÓN: myReshape()
+// ============================================================================
+void myReshape(int w, int h) {
+    glViewport(0, 0, w, h);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(60.0f, (float)w / h, 1.0f, 2000.0f);
+    glMatrixMode(GL_MODELVIEW);
+}
 
-    glStencilFunc(GL_EQUAL, 1, 1);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_ZERO);
+
+// ============================================================================
+// FUNCIÓN: procesarSeleccion() — Color Picking
+// ============================================================================
+void procesarSeleccion(int x, int y) {
     glPushAttrib(GL_ALL_ATTRIB_BITS);
-    glDisable(GL_DEPTH_TEST);
+
     glDisable(GL_LIGHTING);
-    glDisable(GL_CULL_FACE);
     glDisable(GL_TEXTURE_2D);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(0.0f, 0.0f, 0.0f, 0.35f);
+    glDisable(GL_BLEND);
+    glDisable(GL_DITHER);
 
-    GLfloat planeEquation[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
-    GLfloat lightPosArray[4] = { lightPos[0], lightPos[1], lightPos[2], lightPos[3] };
-    GLfloat shadowMatrix[16];
-    gltMakeShadowMatrix(planeEquation, lightPosArray, shadowMatrix);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    glLoadIdentity();
+    float rX = camAngleX * 0.01745f;
+    float rY = camAngleY * 0.01745f;
+    float eyeX = camDist * sin(rX) * cos(rY);
+    float eyeY = camDist * sin(rY);
+    float eyeZ = camDist * cos(rX) * cos(rY);
+    gluLookAt(eyeX, eyeY, eyeZ, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+
+    // --- BASE (Verde) ---
+    glColor3ub(0, 255, 0);
     glPushMatrix();
-        glMultMatrixf(shadowMatrix);
+        glTranslatef(0.0f, cajaAlto / 2.0f + 0.01f, 0.0f);
+        glBegin(GL_QUADS);
+            glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f( cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f( cajaAncho/2.0f,  cajaAlto/2.0f, cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, cajaProfundo/2.0f);
+            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f,  cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+            glVertex3f(cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f(cajaAncho/2.0f,  cajaAlto/2.0f,  cajaProfundo/2.0f);
+            glVertex3f(cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+            glVertex3f(cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
+            glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+            glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
+        glEnd();
+    glPopMatrix();
+
+    // --- TAPA (Rojo) ---
+    glColor3ub(255, 0, 0);
+    glPushMatrix();
+        glTranslatef(0.0f, cajaAlto + 0.01f, 0.0f);
+        glTranslatef(cajaAncho/2.0f, 0.0f, 0.0f);
+        glRotatef(-tapRotation, 0.0f, 0.0f, 1.0f);
+        glTranslatef(-cajaAncho/2.0f, 0.0f, 0.0f);
+        glScalef(cajaAncho, 0.2f, cajaProfundo);
+        glutSolidCube(1.0f);
+    glPopMatrix();
+
+    // --- GEMA (Azul) ---
+    glColor3ub(0, 0, 255);
+    glPushMatrix();
+        glTranslatef(0.0f, 2.4f, 0.0f);
+        gluQuadricDrawStyle(qPicking, GLU_FILL);
         glPushMatrix();
-            glTranslatef(0.0f, cajaAlto/2.0f + 0.01f, 0.0f);
-            glBegin(GL_QUADS);
-                glVertex3f(-cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
-                glVertex3f( cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
-                glVertex3f( cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
-                glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
-                glVertex3f( cajaAncho/2, cajaAlto/2, cajaProfundo/2);
-                glVertex3f(-cajaAncho/2, cajaAlto/2, cajaProfundo/2);
-                glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
-                glVertex3f( cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
-                glVertex3f(-cajaAncho/2, cajaAlto/2, cajaProfundo/2);
-                glVertex3f(-cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
-                glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
-                glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
-                glVertex3f(cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
-                glVertex3f(cajaAncho/2, cajaAlto/2, cajaProfundo/2);
-                glVertex3f(cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
-                glVertex3f(cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
-            glEnd();
+            glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+            gluCylinder(qPicking, 1.65f, 0.0f, 0.5f, 12, 2);
         glPopMatrix();
         glPushMatrix();
-            glTranslatef(0.0f, cajaAlto + 0.01f, 0.0f);
-            glTranslatef(cajaAncho/2.0f, 0.0f, 0.0f);
-            glRotatef(-tapRotation, 0.0f, 0.0f, 1.0f);
-            glTranslatef(-cajaAncho/2.0f, 0.0f, 0.0f);
-            glBegin(GL_QUADS);
-                glVertex3f(-cajaAncho/2, 0, cajaProfundo/2);
-                glVertex3f( cajaAncho/2, 0, cajaProfundo/2);
-                glVertex3f( cajaAncho/2, 0,-cajaProfundo/2);
-                glVertex3f(-cajaAncho/2, 0,-cajaProfundo/2);
-            glEnd();
+            glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+            gluCylinder(qPicking, 1.65f, 0.0f, 1.20f, 12, 2);
         glPopMatrix();
     glPopMatrix();
 
-    glPopAttrib();
-    glDisable(GL_STENCIL_TEST);
+    // --- HITBOXES DE NÚMEROS ---
+    float alturaCentro = cajaAlto / 2.0f + 0.01f;
+
+    glPushMatrix();
+        glTranslatef(cajaAncho/2.0f + 0.05f, alturaCentro, 0.0f);
+        glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
+        glScalef(-1.0f, 1.0f, 1.0f);
+        for (int i = 0; i < 2; i++) {
+            glPushMatrix();
+                glTranslatef((i - 0.5f) * 1.85f, 0.5f, 0.0f);
+                glColor3ub(102 + i, 0, 0); 
+                glBegin(GL_QUADS);
+                    glVertex3f(-0.55f, -0.6f, 0.0f);
+                    glVertex3f( 0.55f, -0.6f, 0.0f);
+                    glVertex3f( 0.55f,  1.0f, 0.0f);
+                    glVertex3f(-0.55f,  1.0f, 0.0f);
+                glEnd();
+            glPopMatrix();
+        }
+    glPopMatrix();
+
+    glPushMatrix();
+        glTranslatef(-cajaAncho/2.0f - 0.05f, alturaCentro, 0.0f);
+        glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+        glScalef(-1.0f, 1.0f, 1.0f);
+        for (int i = 2; i < 4; i++) {
+            glPushMatrix();
+                glTranslatef(((i-2) - 0.5f) * 1.85f, 0.5f, 0.0f);
+                glColor3ub(100 + (i-2), 0, 0); 
+                glBegin(GL_QUADS);
+                    glVertex3f(-0.55f, -0.6f, 0.0f);
+                    glVertex3f( 0.55f, -0.6f, 0.0f);
+                    glVertex3f( 0.55f,  1.0f, 0.0f);
+                    glVertex3f(-0.55f,  1.0f, 0.0f);
+                glEnd();
+            glPopMatrix();
+        }
+    glPopMatrix();
+
+    // --- HITBOX ESTANDARTE (Magenta) ---
+    if (cajaDesbloqueada) {
+        glColor3ub(200, 0, 200);
+        float polZ      = cajaProfundo / 2.0f + 3.5f;
+        float polAltura = 4.5f;
+        glPushMatrix();
+            glTranslatef(0.0f, polAltura - 1.25f, polZ - 1.5f);
+            glScalef(0.5f, 2.5f, 3.5f);
+            glutSolidCube(1.0f);
+        glPopMatrix();
+    }
+
+    // --- LEER EL PÍXEL ---
+    unsigned char pixel[3];
+    int viewportY = glutGet(GLUT_WINDOW_HEIGHT) - y;
+    glReadPixels(x, viewportY, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel);
+
+    // --- LÓGICA DE SELECCIÓN ---
+    if (pixel[0] >= 100 && pixel[0] <= 103 && pixel[1] < 50 && pixel[2] < 50) {
+        int indice;
+        if (pixel[0] <= 101) indice = pixel[0] - 100 + 2; 
+        else                 indice = pixel[0] - 102;      
+        combinacion[indice]++;
+        if (combinacion[indice] > 9) combinacion[indice] = 1;
+
+        printf("Numero %d ajustado a: %d\n", indice + 1, combinacion[indice]);
+        if (audioListo)
+            ma_engine_play_sound(&motorAudio, "assets/audio/numbers/simple_click.mp3", NULL);
+
+        if (combinacion[0]==1 && combinacion[1]==2 &&
+            combinacion[2]==3 && combinacion[3]==4) {
+            cajaDesbloqueada = true;
+            printf(">>> PUZZLE RESUELTO!\n");
+            if (audioListo)
+                ma_engine_play_sound(&motorAudio, "assets/audio/puzzle/space_advice_bassEfect.mp3", NULL);
+        }
+    }
+    else if (pixel[0] > 200 && pixel[1] < 50 && pixel[2] < 50) {
+        printf("Clic en la TAPA!\n");
+        tapRotationSpeed = velocidadRapida;
+        tapIsOpening = !tapIsOpening;
+        if (audioListo) {
+            if (tapIsOpening) ma_engine_play_sound(&motorAudio, "assets/audio/cofre/abrirCofre.mp3", NULL);
+            else              ma_engine_play_sound(&motorAudio, "assets/audio/cofre/cerrarCofre.mp3", NULL);
+        }
+    }
+    else if (pixel[0] < 50 && pixel[1] > 200 && pixel[2] < 50) {
+        printf("Clic en la BASE! Velocidad normal.\n");
+        tapRotationSpeed = velocidadNormal;
+    }
+    else if (pixel[0] < 50 && pixel[1] < 50 && pixel[2] > 200) {
+        printf("Clic en el DIAMANTE!\n");
+        if (audioListo) {
+            int randomNum = (rand() % 5) + 1;
+            char rutaSonido[100];
+            sprintf(rutaSonido, "assets/audio/diamante/tocarDiamante%d.mp3", randomNum);
+            ma_engine_play_sound(&motorAudio, rutaSonido, NULL);
+        }
+    }
+    else if (pixel[0] > 150 && pixel[0] < 220 && pixel[1] < 50 && pixel[2] > 150) {
+        printf("Clic en el ESTANDARTE!\n");
+        if (audioListo)
+            ma_engine_play_sound(&motorAudio, "assets/audio/numbers/simple_click.mp3", NULL);
+    }
+    else {
+        printf("Clic en el vacio.\n");
+    }
+
+    glPopAttrib(); 
+    glutPostRedisplay();
 }
 
+
+// ============================================================================
+// CALLBACKS DE TECLADO Y MOUSE
+// ============================================================================
+void teclado(unsigned char key, int x, int y) {
+    switch (key) {
+        case 'w': case 'W': if (camDist > 5.0f) camDist -= 1.0f; break;
+        case 's': case 'S': camDist += 1.0f; break;
+        case 'c': case 'C': bCull      = !bCull;      break;
+        case 'd': case 'D': bDepth     = !bDepth;     break;
+        case 'z': case 'Z': bWireframe = !bWireframe; break;
+        case 'x': case 'X': bSmooth    = !bSmooth;    break;
+        case '8': lightPos[2] -= 0.5f; break;
+        case '2': lightPos[2] += 0.5f; break;
+        case '6': lightPos[0] += 0.5f; break;
+        case '4': lightPos[0] -= 0.5f; break;
+        case '1': lightPos[1] += 0.5f; break;
+        case '0': if (lightPos[1] > 0.5f) lightPos[1] -= 0.5f; break;
+        case ' ':
+            tapIsOpening = !tapIsOpening;
+            glutPostRedisplay();
+            break;
+        case 27: exit(0); break;
+    }
+    glutPostRedisplay();
+}
+
+void tecladoEspecial(int key, int x, int y) {
+    switch (key) {
+        case GLUT_KEY_LEFT:  camAngleX -= 3.0f; break;
+        case GLUT_KEY_RIGHT: camAngleX += 3.0f; break;
+        case GLUT_KEY_UP:    if (camAngleY < 89.0f) camAngleY += 3.0f; break;
+        case GLUT_KEY_DOWN:  if (camAngleY >  1.0f) camAngleY -= 3.0f; break;
+        case GLUT_KEY_F1: bCull      = !bCull;      break;
+        case GLUT_KEY_F2: bDepth     = !bDepth;     break;
+        case GLUT_KEY_F3: bWireframe = !bWireframe; break;
+        case GLUT_KEY_F4: bSmooth    = !bSmooth;    break;
+    }
+    glutPostRedisplay();
+}
+
+void mouseBoton(int boton, int estado, int x, int y) {
+    if (boton == GLUT_LEFT_BUTTON) {
+        if (estado == GLUT_DOWN) {
+            mousePresionado = true;
+            lastMouseX = x;
+            lastMouseY = y;
+            procesarSeleccion(x, y);
+        } else {
+            mousePresionado = false;
+        }
+    }
+    if (boton == 3 && estado == GLUT_DOWN) { if (camDist > 5.0f) camDist -= 1.0f; glutPostRedisplay(); }
+    if (boton == 4 && estado == GLUT_DOWN) { camDist += 1.0f; glutPostRedisplay(); }
+}
+
+void mouseMovimiento(int x, int y) {
+    if (!mousePresionado) return;
+    camAngleX += (x - lastMouseX) * 0.4f;
+    camAngleY += (y - lastMouseY) * 0.4f;
+    if (camAngleY >  89.0f) camAngleY =  89.0f;
+    if (camAngleY <   1.0f) camAngleY =   1.0f;
+    lastMouseX = x;
+    lastMouseY = y;
+    glutPostRedisplay();
+}
 
 // ============================================================================
 // INICIALIZACIÓN
@@ -1144,8 +1135,6 @@ void initNURBS() {
         }
     }
 
-    // >>> FIX: X empieza en 0 (borde izquierdo = palo) y crece hacia un lado.
-    // Antes era centrado (-anchoP/2 a +anchoP/2) y el paño atravesaba el palo por la mitad.
     float anchoP = 3.0f;
     float altoP  = 2.5f;
     for (int u = 0; u < 4; u++) {
@@ -1165,7 +1154,6 @@ void initQuadrics() {
     qGema   = gluNewQuadric(); gluQuadricNormals(qGema,    GLU_SMOOTH);
     qPatas  = gluNewQuadric(); gluQuadricNormals(qPatas,   GLU_SMOOTH);
     qPicking= gluNewQuadric(); gluQuadricNormals(qPicking, GLU_NONE);
-    // >>> RESTAURADO: Quadrics para el estandarte
     qPalo   = gluNewQuadric(); gluQuadricNormals(qPalo,    GLU_SMOOTH);
     qBolita = gluNewQuadric(); gluQuadricNormals(qBolita,  GLU_SMOOTH);
 }
@@ -1240,8 +1228,6 @@ int main(int argc, char** argv) {
         printf("ERROR: No se pudo inicializar el motor de audio.\n");
     }
 
-    // Sin timerCallback forzado: el redibujado solo ocurre cuando
-    // hay eventos (mouse, teclado) o animación activa. CPU en reposo = 0%.
     glutMainLoop();
     return 0;
 }
