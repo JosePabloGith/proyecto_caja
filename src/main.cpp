@@ -77,6 +77,7 @@ GLuint texturaPapel = 0; //ID de la textura del pergamino (cargada solo una vez)
 float velocidadNormal = 1.5f;
 float velocidadRapida = 5.0f;
 
+
 // ------ CÁMARA ------
 float camDist = 25.0f;      // Distancia de la cámara al origen
 float camAngleX = 0.0f;     // Ángulo horizontal (rotación izquierda-derecha)
@@ -135,6 +136,12 @@ bool tapIsOpening = false;       // ¿Está en proceso de abrir?
 // ------ GEMA ADENTRO ------
 float gemaRadius = 1.65f;         // Radio de la esfera de la gema
 float gemaY = 2.4f;              // Altura a la que flota dentro de la caja
+			
+
+// ============================================================================
+// VARIABLES PARA EL STANDARTE
+// ===========================================================================
+GLfloat ctrlPointsBanner[4][4][3];
 
 
 // ============================================================================
@@ -171,6 +178,10 @@ void mouseMovimiento(int x, int y);
 void configurarOpenGL();
 void cargarTexturasSkybox();
 GLuint cargarBMP(const char* ruta);
+
+//sollucion de exceso de fotogramas
+void timerCallback(int value);
+
 void initNURBS();
 
 
@@ -521,6 +532,21 @@ void dibujarPergamino(){
     //elevamos el pergamino por encima del cofre al abrirse
     glTranslatef(0.0f, 6.0f , 0.0f);
 
+    //arreglamos la superficie negra, configurando el material y el color para que la luz
+    //lo ilumine chido
+    glColor3f(1.0f, 1.0f, 1.0f);
+    GLfloat matAmbiente[]  = { 0.8f, 0.7f, 0.5f, 1.0f };
+    GLfloat matDifuso[]    = { 1.0f, 0.9f, 0.7f, 1.0f };
+    GLfloat matEspecular[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+    GLfloat matBrillo[]    = { 10.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT,   matAmbiente);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE,   matDifuso);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,  matEspecular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matBrillo);
+
+
+
+
     //asumimos que la textura texture_paper_old.bmp ya esta cargada en un ID del arrray.
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, texturaPapel); // <<-- cargamos la textura del pergamino
@@ -534,13 +560,103 @@ void dibujarPergamino(){
           gluNurbsSurface(nurbPergamino, 8, nudos, 8, nudos, 4 * 3, 3, &ctrlPointsNurbs[0][0][0], 4, 4, GL_MAP2_VERTEX_3);
         gluEndSurface(nurbPergamino);      
 
-        
+       
+	// Restaurar estado
+        if (bCull) glEnable(GL_CULL_FACE); // Respetamos la tecla F1 del usuario
         glDisable(GL_TEXTURE_2D);
 
     glPopMatrix();
 }
 
+/*
+ * Dibujaremos un standarte, el cual tomara el papel
+ * */
+void dibujarEstandarte() {
+    if (!cajaDesbloqueada) return;
 
+    float polZ      = cajaProfundo / 2.0f + 3.5f; // Detrás de la caja
+    float polAltura = 4.5f;
+    float polRadio  = 0.09f;
+
+    glPushMatrix();
+    glTranslatef(0.0f, 0.01f, polZ); // Base del palo en el suelo
+
+    // =============================================
+    // PARTE 1: EL PALO (cilindro dorado)
+    // =============================================
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texturaOro);
+    glEnable(GL_TEXTURE_GEN_S);
+    glEnable(GL_TEXTURE_GEN_T);
+    glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
+    glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
+    glColor3f(1.0f, 0.84f, 0.0f);
+
+    GLUquadricObj* palo = gluNewQuadric();
+    gluQuadricNormals(palo, GLU_SMOOTH);
+
+    glPushMatrix();
+        glRotatef(-90.0f, 1.0f, 0.0f, 0.0f); // gluCylinder crece en +Z, lo giramos a +Y
+        gluCylinder(palo, polRadio, polRadio * 0.6f, polAltura, 12, 4);
+    glPopMatrix();
+
+    // Bolita decorativa en la punta
+    glTranslatef(0.0f, polAltura, 0.0f);
+    GLUquadricObj* bolita = gluNewQuadric();
+    gluQuadricNormals(bolita, GLU_SMOOTH);
+    gluSphere(bolita, polRadio * 2.2f, 10, 10);
+    gluDeleteQuadric(bolita);
+    gluDeleteQuadric(palo);
+
+    glDisable(GL_TEXTURE_GEN_S);
+    glDisable(GL_TEXTURE_GEN_T);
+    glDisable(GL_TEXTURE_2D);
+
+    // =============================================
+    // PARTE 2: EL PERGAMINO NURBS (bandera)
+    // =============================================
+    // Ya estamos en la punta del palo, la bandera cuelga desde aquí
+
+    // Material responsivo a la luz
+    GLfloat matAmb[]  = { 0.75f, 0.65f, 0.45f, 1.0f };
+    GLfloat matDif[]  = { 1.0f,  0.90f, 0.70f, 1.0f };
+    GLfloat matSpec[] = { 0.15f, 0.15f, 0.15f, 1.0f };
+    GLfloat matShin[] = { 8.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT,   matAmb);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE,   matDif);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,  matSpec);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShin);
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texturaPapel);
+    
+    //aqui ponemos una rotacion para que la bandera apunte a otra direccion
+    glRotatef(-90.0f, 0.0f, 1.0f, 0.0f); // Girar para que mire hacia -X
+
+    glDisable(GL_CULL_FACE); // Ver ambas caras de la tela
+
+    GLfloat nudos[8]      = { 0,0,0,0, 1,1,1,1 };
+    GLfloat nudosTex[4]   = { 0,0,1,1 };
+    GLfloat texPts[2][2][2] = { {{0,0},{0,1}}, {{1,0},{1,1}} };
+
+    gluBeginSurface(nurbPergamino);
+        gluNurbsSurface(nurbPergamino,
+                        4, nudosTex, 4, nudosTex,
+                        2*2, 2, &texPts[0][0][0],
+                        2, 2, GL_MAP2_TEXTURE_COORD_2);
+        gluNurbsSurface(nurbPergamino,
+                        8, nudos, 8, nudos,
+                        4*3, 3, &ctrlPointsBanner[0][0][0],
+                        4, 4, GL_MAP2_VERTEX_3);
+    gluEndSurface(nurbPergamino);
+
+    // Restaurar estado
+    if (bCull) glEnable(GL_CULL_FACE);
+    glDisable(GL_TEXTURE_2D);
+
+    glPopMatrix(); // fin del estandarte
+}
 
 
 // ============================================================================
@@ -623,12 +739,10 @@ void display() {
     if (tapIsOpening) {
         if (tapRotation < tapMaxRotation) {
             tapRotation += tapRotationSpeed;
-            glutPostRedisplay(); // <- EL MOTOR: Pide dibujar el SIGUIENTE cuadro
         }
     } else {
         if (tapRotation > 0.0f) {
             tapRotation -= tapRotationSpeed;
-            glutPostRedisplay(); // <- EL MOTOR: Pide dibujar el SIGUIENTE cuadro
         }
     }
 
@@ -660,6 +774,10 @@ void display() {
 
     
     dibujarGema();         // ← dubujamos la gema
+
+    dibujarPergamino();     // ← dibujamos el pergamino (solo si el puzzle está resuelto)
+
+    dibujarEstandarte();    // ← dibujamos el estandarte (solo si el puzzle está resuelto)
     
 
     // ========================================================================
@@ -858,6 +976,22 @@ void procesarSeleccion(int x, int y) {
 
     
     // 5. LEER EL PÍXEL DONDE ESTÁ EL MOUSE
+
+    // Dibujamos la bandera si el puzzle está resuelto
+    if (cajaDesbloqueada) {
+        glColor3ub(200, 0, 200);
+        float polZ = cajaProfundo / 2.0f + 3.5f;
+	float polAltura = 4.5f;
+        glPushMatrix();
+	    
+	    //
+            glTranslatef(0.0f, polAltura - 1.25f, polZ - 1.5f); // cubre el área de la bandera
+	
+            glScalef(0.5f, 2.5f, 3.5f);
+            glutSolidCube(1.0f);
+        glPopMatrix();
+    }
+
     unsigned char pixel[3];
     int viewportY = glutGet(GLUT_WINDOW_HEIGHT) - y; 
     glReadPixels(x, viewportY, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel);
@@ -922,10 +1056,19 @@ void procesarSeleccion(int x, int y) {
             ma_engine_play_sound(&motorAudio, rutaSonido, NULL);
         }
     }
-    else {
-        printf("Clic en el vacio.\n"); 
-    }
+  
     
+    //Estandarte magenta
+    else if (pixel[0] > 150 && pixel[0] < 220 && pixel[1] < 50 && pixel[2] > 150) {
+        printf("Clic en el ESTANDARTE!\n");
+        if (audioListo) {
+            ma_engine_play_sound(&motorAudio, "assets/audio/numbers/simple_click.mp3", NULL);
+        }
+        // Aquí podrías agregar una animación o efecto futuro
+    }else {
+        printf("Clic en el vacio.\n");
+    }
+
     // 7. RESTAURAMOS EL ESTADO PARA QUE display() DIBUJE NORMAL
     glEnable(GL_LIGHTING);
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f); // Tu color de fondo original
@@ -1433,8 +1576,12 @@ void dibujarTapa() {
 // Dibuja el Toroide y la Gema de cabeza usando el Stencil Buffer como máscara.
 // ============================================================================
 void dibujarReflejoMadera() {
-glPushAttrib(GL_ALL_ATTRIB_BITS);
 
+    //cuidamos la memoria, si la tapa esta cerrada no dibujamos el reflejo
+    if (tapRotation < 20.0f) return; // Si la tapa está casi cerrada, no hay reflejo visible
+
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+ 
     // 1. Limpiar el Stencil Buffer de sombras previas
     glClear(GL_STENCIL_BUFFER_BIT);
 
@@ -1764,22 +1911,26 @@ void initNURBS() {
     gluNurbsProperty(nurbPergamino, GLU_SAMPLING_TOLERANCE, 25.0);
     gluNurbsProperty(nurbPergamino, GLU_DISPLAY_MODE, GLU_FILL);
 
+
+    float anchoP = 3.0f;
+    float altoP  = 2.5f;
+
+
     //Mapeo topologico de la sabana de control Plano curvado
     for (int u = 0 ; u < 4; u++) {
-    for (int v = 0; v < 4; v++) {
-        ctrlPointsNurbs[u][v][0] = 3.0f * ((GLfloat)u - 1.5f); // X
-        ctrlPointsNurbs[u][v][1] = 0.0f; // Y altura base
-        
-        //si son los puntos centrales, les damos altura para crear la curvatura del pergamino
-        if (u == 1 || u == 2) {
-        ctrlPointsNurbs[u][v][1] = 1.0f; 
+
+    	for (int v = 0; v < 4; v++) {
+
+    		ctrlPointsBanner[u][v][0] = (anchoP / 3.0f) * u - anchoP / 2.0f;  // X: se extiende a la derecha
+        	ctrlPointsBanner[u][v][1] = -(altoP / 3.0f) * v; // Y: cuelga hacia abajo
+        	// Onda suave en Z para simular tela flameando
+        	float onda = 0.0f;
+        	if (u == 1) onda =  0.2f;
+        	if (u == 2) onda = -0.15f;
+      		ctrlPointsBanner[u][v][2] = onda;
+	
 
         }
-
-        ctrlPointsNurbs[u][v][2] = 3.0f * ((GLfloat)v - 1.5f); // Z
-    }
-
-
 
     }
     
@@ -1901,6 +2052,17 @@ void configurarOpenGL() {
     initNURBS();
     }
 
+
+
+// ============================================================================
+// Funcion maestra para controlar los fps (frames por segundo) y el tiempo entre frames
+// ============================================================================
+void timerCallback(int valor) {
+    glutPostRedisplay(); // Solicita a GLUT que redibuje la pantalla un solo cuadro
+    glutTimerFunc(16, timerCallback, 0); // Vuelve a llamar a esta función después de 16 ms (~60 FPS)
+}
+
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -1983,6 +2145,8 @@ int main(int argc, char** argv) {
      * 3. Llama a funciones registradas (callbacks)
      * 4. Repite
      */
+
+    glutTimerFunc(16, timerCallback, 0); // Inicia el timer para controlar los FPS
     glutMainLoop();
 
     return 0;
