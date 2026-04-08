@@ -11,6 +11,9 @@ backup/
 *.swo
 undo/
 
+# Ignorar archivos de temporales de depuracion
+.vscode/
+
 #ignorara archivos del sistema operativo o basura
 .DS_Store
 Thumbs.db

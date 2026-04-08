@@ -23,6 +23,14 @@ LDFLAGS = -lGL -lGLU -lglut -lm -lasound -lpthread -ldl
 SRC = src/main.cpp
 EXEC = bin/proyectoFinal
 
+# Flags especificos para debug
+# -g : incluye simbolos DWARF (GDB los nececita para debuggear)
+#  -O0 : desactiva optimizaciones para facilitar el debug
+#  -ggdb3 : incluye simbolos de debug de nivel 3 (máximo detalle)
+DEBUG_CFLAGS = -I. -Wall -O0 -g -ggdb -Iinclude
+
+
+
 # Regla principal
 all: directory $(EXEC)
 
@@ -34,6 +42,11 @@ directory:
 $(EXEC): $(SRC)
 	$(CC) $(SRC) -o $(EXEC) $(CFLAGS) $(LDFLAGS)
 
+# ------ Target debug ------
+debug: directory
+	$(CC) $(SRC) -o $(EXEC) $(DEBUG_CFLAGS) $(LDFLAGS)
+	@echo "binario de debug generado en $(EXEC)"
+
 # Limpiar archivos generados
 clean:
 	rm -rf bin
@@ -42,9 +55,15 @@ clean:
 run: all
 	./$(EXEC)
 
+# ─── Ejecutar versión debug (útil para probar) ──────────
+run-debug: debug
+	./$(EXEC)
+
 # Ayuda
 help:
 	@echo "Opciones del Makefile:"
-	@echo "  make       - Compila el proyecto"
-	@echo "  make run   - Compila y ejecuta inmediatamente"
-	@echo "  make clean - Borra el ejecutable generado"
+	@echo "  make           - Compila en modo release"
+	@echo "  make debug     - Compila con símbolos para GDB"
+	@echo "  make run       - Compila y ejecuta (release)"
+	@echo "  make run-debug - Compila y ejecuta (debug)"
+	@echo "  make clean     - Borra el ejecutable generado"

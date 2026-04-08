@@ -104,9 +104,6 @@ bool  tapIsOpening     = false;
 float gemaRadius = 1.65f;
 float gemaY      = 2.4f;
 
-//optimizacion de memoria vRam
-GLuint idToroide; // Un ticket para identificar la receta de dibujo del toroide en la VRAM, evitando recalcularlo cada frame.
-
 // ============================================================================
 // PROTOTIPOS
 // ============================================================================
@@ -196,10 +193,8 @@ void dibujarToroide() {
 
     glColor3f(1.0f, 0.84f, 0.0f);
     
-    // --- EL CAMBIO MAESTRO ---
-    // En lugar de calcular 432 polígonos, disparamos la geometría desde la VRAM
-    glCallList(idToroide);    
-    
+    // Reducción geométrica: de 1440 quads a solo 432 quads para optimizar el bus.
+    glutSolidTorus(0.135f, 1.4f, 12, 36);
 
     glDisable(GL_TEXTURE_GEN_S);
     glDisable(GL_TEXTURE_GEN_T);
@@ -231,14 +226,10 @@ void dibujarGema() {
 
     // Mapeo ambiental para darle un tono iridiscente
     glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, texturaMaderaCaja); //usamos la textura de madera para emular reflejo 
-
-    // Configuración de GL_BLEND para mezclar la textura con el color del material, creando un efecto de transparencia y brillo
+    glBindTexture(GL_TEXTURE_2D, texturaMaderaCaja);
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_BLEND);
     GLfloat blendColor[] = { 0.2f, 0.5f, 1.0f, 1.0f };
     glTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, blendColor);
-
-    //generacion automatica de esferemapa para simular reflejos dinámicos sin el costo de procesamiento del Ray Tracing
     glEnable(GL_TEXTURE_GEN_S);
     glEnable(GL_TEXTURE_GEN_T);
     glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_SPHERE_MAP);
@@ -273,12 +264,11 @@ void dibujarGema() {
     // --- Dibujo de las aristas (Wireframe) superpuestas ---
     // Guardamos estado para no contaminar la luz del resto de los objetos
     glPushAttrib(GL_LIGHTING_BIT | GL_LINE_BIT | GL_CURRENT_BIT);
-    glDisable(GL_LIGHTING); //sin sombras para el wireframe, solo líneas brillantes
+    glDisable(GL_LIGHTING);
     glLineWidth(2.0f);
     glColor4f(0.3f, 0.6f, 1.0f, 0.20f);
     
-    gluQuadricDrawStyle(qGema, GLU_LINE);// cambiamos de solido a alambre para dibujar las aristas del cristal, 
-					 // resaltando su forma facetada y añadiendo un efecto de brillo etéreo
+    gluQuadricDrawStyle(qGema, GLU_LINE);
 
     glPushMatrix();
         glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
@@ -289,11 +279,11 @@ void dibujarGema() {
         gluCylinder(qGema, R, 0.0f, h2, 16, 4);
     glPopMatrix();
 
-    gluQuadricDrawStyle(qGema, GLU_FILL); // Restauramos la cuadrica al modo sólido para futuros usos
-    glPopAttrib();// Restauramos el estado de iluminación, líneas y color para no afectar el resto de la escena
+    gluQuadricDrawStyle(qGema, GLU_FILL); // Restauramos
+    glPopAttrib();
     
-    glDisable(GL_BLEND); // Desactivamos el blending para que el resto de los objetos no se vean afectados por la transparencia de la gema
-    glPopMatrix(); // Fin de la función de dibujo de la gema
+    glDisable(GL_BLEND);
+    glPopMatrix();
 }
 
 void dibujarPatasToroide() {
@@ -328,10 +318,6 @@ void dibujarPatasToroide() {
 
 /*
  * dibujarPanelesPuzzle: Muestra los números actuales del candado usando fuentes Stroke de GLUT.
- * con la función glTexGeni configuro los ejes S y T de mi textura de oro para que utilicen el modo de generación GL_SPHERE_MAP.
- * Esto descarta el mapeo 2D tradicional y utiliza matemáticas de reflexión de cámara. El resultado es un Mapeo de Entorno 
- * (Environment Mapping) que simula que los caracteres vectoriales son metales curvos altamente reflectantes, dándoles ese 
- * brillo dinámico cuando el usuario orbita la cámara, sin el inmenso costo de procesamiento del Ray Tracing
  */
 void dibujarPanelesPuzzle() {
     glPushAttrib(GL_LIGHTING_BIT | GL_CURRENT_BIT | GL_LINE_BIT);
@@ -489,7 +475,7 @@ void dibujarReflejoMadera() {
 
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE); // No pintar color en pantalla
     glDepthMask(GL_FALSE); // Tampoco escribir profundidad
-    glDepthFunc(GL_LEQUAL); // Permite dibujar el reflejo incluso si está justo en el piso (evita Z-fighting)
+    glDepthFunc(GL_LEQUAL);
 
     // Dibujamos el área permitida para el reflejo (el piso de la caja)
     glPushMatrix();
@@ -561,11 +547,6 @@ void dibujarReflejoMadera() {
 /*
  * dibujarSombraCaja: Sombra proyectada al piso (Punto 8 y 13).
  * Multiplica la ModelView actual por una matriz de transformación geométrica especial.
- * Stencil Buffer: Se utiliza para limitar la sombra solo al área del piso, evitando que se proyecte sobre las paredes o el fondo.
- * Técnica de "Shadow Volumes" simplificada: No se generan volúmenes reales, sino que se aplasta la geometría de la caja contra 
- * el plano del piso desde la perspectiva de la luz.
- * Previene el "Double Blending" al escribir 0 en el stencil después de pintar la sombra, asegurando que cada píxel
- * solo se oscurezca una vez, incluso si las sombras de la tapa y el cuerpo se superponen.
  */
 void dibujarSombraCaja() {
     // 1. Crear máscara en el Stencil Buffer donde exista piso
@@ -604,65 +585,45 @@ void dibujarSombraCaja() {
     GLfloat shadowMatrix[16];
     gltMakeShadowMatrix(planeEquation, lightPosArray, shadowMatrix);
 
-
     glPushMatrix();
-       glMultMatrixf(shadowMatrix); // APLASTAR geometría a partir de aquí (Prensa Hidráulica)
-    
-       // =========================================================
-       // 1. SOMBRA DEL CUERPO DE LA CAJA (Las 4 Paredes Verticales)
-       // =========================================================
-       glPushMatrix();
-           glTranslatef(0.0f, cajaAlto/2.0f + 0.01f, 0.0f);
-           glBegin(GL_QUADS);
-            
-               // Cara Trasera (Fondo en el eje Z negativo)
-               glVertex3f(-cajaAncho/2,  cajaAlto/2, -cajaProfundo/2);
-               glVertex3f( cajaAncho/2,  cajaAlto/2, -cajaProfundo/2);
-               glVertex3f( cajaAncho/2, -cajaAlto/2, -cajaProfundo/2);
-               glVertex3f(-cajaAncho/2, -cajaAlto/2, -cajaProfundo/2);
-            
-               // Cara Frontal (Frente en el eje Z positivo)
-               glVertex3f( cajaAncho/2,  cajaAlto/2,  cajaProfundo/2);
-               glVertex3f(-cajaAncho/2,  cajaAlto/2,  cajaProfundo/2);
-               glVertex3f(-cajaAncho/2, -cajaAlto/2,  cajaProfundo/2);
-               glVertex3f( cajaAncho/2, -cajaAlto/2,  cajaProfundo/2);
-            
-               // Cara Izquierda (Lado en el eje X negativo)
-               glVertex3f(-cajaAncho/2,  cajaAlto/2,  cajaProfundo/2);
-               glVertex3f(-cajaAncho/2,  cajaAlto/2, -cajaProfundo/2);
-               glVertex3f(-cajaAncho/2, -cajaAlto/2, -cajaProfundo/2);
-               glVertex3f(-cajaAncho/2, -cajaAlto/2,  cajaProfundo/2);
-            
-               // Cara Derecha (Lado en el eje X positivo)
-               glVertex3f( cajaAncho/2,  cajaAlto/2, -cajaProfundo/2);
-               glVertex3f( cajaAncho/2,  cajaAlto/2,  cajaProfundo/2);
-               glVertex3f( cajaAncho/2, -cajaAlto/2,  cajaProfundo/2);
-               glVertex3f( cajaAncho/2, -cajaAlto/2, -cajaProfundo/2);
-            
-           glEnd();
-       glPopMatrix();
+        glMultMatrixf(shadowMatrix); // APLASTAR geometría a partir de aquí
+        glPushMatrix();
+            glTranslatef(0.0f, cajaAlto/2.0f + 0.01f, 0.0f);
+            glBegin(GL_QUADS);
+                // Vértices de la Caja (aplastados matemáticamente por la matriz anterior)
+                glVertex3f(-cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
+                glVertex3f( cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
+                glVertex3f( cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+                glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+                glVertex3f( cajaAncho/2, cajaAlto/2, cajaProfundo/2);
+                glVertex3f(-cajaAncho/2, cajaAlto/2, cajaProfundo/2);
+                glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+                glVertex3f( cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+                glVertex3f(-cajaAncho/2, cajaAlto/2, cajaProfundo/2);
+                glVertex3f(-cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
+                glVertex3f(-cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+                glVertex3f(-cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+                glVertex3f(cajaAncho/2, cajaAlto/2,-cajaProfundo/2);
+                glVertex3f(cajaAncho/2, cajaAlto/2, cajaProfundo/2);
+                glVertex3f(cajaAncho/2,-cajaAlto/2, cajaProfundo/2);
+                glVertex3f(cajaAncho/2,-cajaAlto/2,-cajaProfundo/2);
+            glEnd();
+        glPopMatrix();
+        glPushMatrix();
+            glTranslatef(0.0f, cajaAlto + 0.01f, 0.0f);
+            glTranslatef(cajaAncho/2.0f, 0.0f, 0.0f);
+            glRotatef(-tapRotation, 0.0f, 0.0f, 1.0f);
+            glTranslatef(-cajaAncho/2.0f, 0.0f, 0.0f);
+            glBegin(GL_QUADS);
+                // Vértices de la Tapa (las sombras también se animarán automáticamente)
+                glVertex3f(-cajaAncho/2, 0, cajaProfundo/2);
+                glVertex3f( cajaAncho/2, 0, cajaProfundo/2);
+                glVertex3f( cajaAncho/2, 0,-cajaProfundo/2);
+                glVertex3f(-cajaAncho/2, 0,-cajaProfundo/2);
+            glEnd();
+        glPopMatrix();
+    glPopMatrix();
 
-       // =========================================================
-       // 2. SOMBRA DE LA TAPA (Plano animado con Bisagra)
-       // =========================================================
-       glPushMatrix();
-           glTranslatef(0.0f, cajaAlto + 0.01f, 0.0f); // 1. Subir al nivel del techo
-           glTranslatef(cajaAncho/2.0f, 0.0f, 0.0f);   // 2. Mover pivote a la orilla (Bisagra)
-           glRotatef(-tapRotation, 0.0f, 0.0f, 1.0f);  // 3. Rotar según el ángulo de animación
-           glTranslatef(-cajaAncho/2.0f, 0.0f, 0.0f);  // 4. Regresar la geometría al centro
-        
-           glBegin(GL_QUADS);
-               // Plano sólido de la Tapa (4 esquinas)
-               glVertex3f(-cajaAncho/2, 0.0f,  cajaProfundo/2);
-               glVertex3f( cajaAncho/2, 0.0f,  cajaProfundo/2);
-               glVertex3f( cajaAncho/2, 0.0f, -cajaProfundo/2);
-               glVertex3f(-cajaAncho/2, 0.0f, -cajaProfundo/2);
-           glEnd();
-       glPopMatrix();
-
-   glPopMatrix(); // Fin del aplastamiento y restauración de la matriz normal
-
-    
     glPopAttrib();
     glDisable(GL_STENCIL_TEST);
 }
@@ -681,16 +642,8 @@ void dibujarFoco() {
     glPopMatrix();
 }
 
-
-/*
- * Para dibujar el Skybox tuvimos que alterar la física de la luz, el búfer de profundidad y el renderizado de caras. Estas líneas finales aseguran que
- * el motor gráfico regrese a su configuración original (Restauración de Estado) y que la cámara vuelva a su posición inicial mediante la Pila de 
- * Matrices (glPopMatrix), evitando que las propiedades del fondo afecten a los objetos principales de la escena.
- *
- *
- * */
 void dibujarSkybox() {
-    float s = skyboxTamanio;  //para facilitar la lectura de las coordenadas de los vértices
+    float s = skyboxTamanio;
     glPushMatrix();
     glDepthMask(GL_FALSE); // Skybox siempre se dibuja al fondo infinito
     glDisable(GL_LIGHTING);
@@ -699,61 +652,19 @@ void dibujarSkybox() {
     glEnable(GL_TEXTURE_2D);
     glColor3f(1.0f, 1.0f, 1.0f);
 
-    // Cara 0 (Derecha)
     glBindTexture(GL_TEXTURE_2D, skyboxTexturas[0]);
-    glBegin(GL_QUADS); 
-        glTexCoord2f(0, 0); glVertex3f( s, -s,  s); 
-        glTexCoord2f(1, 0); glVertex3f( s, -s, -s); 
-        glTexCoord2f(1, 1); glVertex3f( s,  s, -s); 
-        glTexCoord2f(0, 1); glVertex3f( s,  s,  s); 
-    glEnd();
-
-    // Cara 1 (Izquierda)
+    glBegin(GL_QUADS); glTexCoord2f(0,0); glVertex3f( s,-s, s); glTexCoord2f(1,0); glVertex3f( s,-s,-s); glTexCoord2f(1,1); glVertex3f( s, s,-s); glTexCoord2f(0,1); glVertex3f( s, s, s); glEnd();
     glBindTexture(GL_TEXTURE_2D, skyboxTexturas[1]);
-    glBegin(GL_QUADS); 
-        glTexCoord2f(0, 0); glVertex3f(-s, -s, -s); 
-        glTexCoord2f(1, 0); glVertex3f(-s, -s,  s); 
-        glTexCoord2f(1, 1); glVertex3f(-s,  s,  s); 
-        glTexCoord2f(0, 1); glVertex3f(-s,  s, -s); 
-    glEnd();
-
-    // Cara 2 (Arriba / Techo)
+    glBegin(GL_QUADS); glTexCoord2f(0,0); glVertex3f(-s,-s,-s); glTexCoord2f(1,0); glVertex3f(-s,-s, s); glTexCoord2f(1,1); glVertex3f(-s, s, s); glTexCoord2f(0,1); glVertex3f(-s, s,-s); glEnd();
     glBindTexture(GL_TEXTURE_2D, skyboxTexturas[2]);
-    glBegin(GL_QUADS); 
-        glTexCoord2f(0, 0); glVertex3f(-s,  s,  s); 
-        glTexCoord2f(1, 0); glVertex3f( s,  s,  s); 
-        glTexCoord2f(1, 1); glVertex3f( s,  s, -s); 
-        glTexCoord2f(0, 1); glVertex3f(-s,  s, -s); 
-    glEnd();
-
-    // Cara 3 (Abajo / Suelo virtual)
+    glBegin(GL_QUADS); glTexCoord2f(0,0); glVertex3f(-s, s, s); glTexCoord2f(1,0); glVertex3f( s, s, s); glTexCoord2f(1,1); glVertex3f( s, s,-s); glTexCoord2f(0,1); glVertex3f(-s, s,-s); glEnd();
     glBindTexture(GL_TEXTURE_2D, skyboxTexturas[3]);
-    glBegin(GL_QUADS); 
-        glTexCoord2f(0, 0); glVertex3f(-s, -s,  s); 
-        glTexCoord2f(1, 0); glVertex3f( s, -s,  s); 
-        glTexCoord2f(1, 1); glVertex3f( s, -s, -s); 
-        glTexCoord2f(0, 1); glVertex3f(-s, -s, -s); 
-    glEnd();
-
-    // Cara 4 (Fondo / Atrás)
+    glBegin(GL_QUADS); glTexCoord2f(0,0); glVertex3f(-s,-s, s); glTexCoord2f(1,0); glVertex3f( s,-s, s); glTexCoord2f(1,1); glVertex3f( s,-s,-s); glTexCoord2f(0,1); glVertex3f(-s,-s,-s); glEnd();
     glBindTexture(GL_TEXTURE_2D, skyboxTexturas[4]);
-    glBegin(GL_QUADS); 
-        glTexCoord2f(0, 0); glVertex3f(-s, -s, -s); 
-        glTexCoord2f(1, 0); glVertex3f( s, -s, -s); 
-        glTexCoord2f(1, 1); glVertex3f( s,  s, -s); 
-        glTexCoord2f(0, 1); glVertex3f(-s,  s, -s); 
-    glEnd();
-
-    // Cara 5 (Frente)
+    glBegin(GL_QUADS); glTexCoord2f(0,0); glVertex3f(-s,-s,-s); glTexCoord2f(1,0); glVertex3f( s,-s,-s); glTexCoord2f(1,1); glVertex3f( s, s,-s); glTexCoord2f(0,1); glVertex3f(-s, s,-s); glEnd();
     glBindTexture(GL_TEXTURE_2D, skyboxTexturas[5]);
-    glBegin(GL_QUADS); 
-        glTexCoord2f(0, 0); glVertex3f(-s, -s,  s); 
-        glTexCoord2f(1, 0); glVertex3f( s, -s,  s); 
-        glTexCoord2f(1, 1); glVertex3f( s,  s,  s); 
-        glTexCoord2f(0, 1); glVertex3f(-s,  s,  s); 
-    glEnd();
+    glBegin(GL_QUADS); glTexCoord2f(0,0); glVertex3f(-s,-s, s); glTexCoord2f(1,0); glVertex3f( s,-s, s); glTexCoord2f(1,1); glVertex3f( s, s, s); glTexCoord2f(0,1); glVertex3f(-s, s, s); glEnd();
 
-    // Restauración de estado y configuración original de OpenGL para no afectar el renderizado de los objetos principales.
     if (cullActivo) glEnable(GL_CULL_FACE);
     glDisable(GL_TEXTURE_2D);
     glDepthMask(GL_TRUE);
@@ -769,22 +680,16 @@ void dibujarPiso() {
     glBegin(GL_QUADS);
         // Punto 5: Cálculo y aplicación de normales. 
         // Imprescindible para reaccionar a la luz de GL_LIGHT0.
-	// podemos cambiar de 1 a 10 para formar el piso con mosaicos más pequeños, pero el efecto de repetición de la textura se hará más evidente.
-	// pero para que no se vea feo lo dejo en 1.0f, que es el tamaño original de la textura.
         glNormal3f(0.0f, 1.0f, 0.0f);
-
         glTexCoord2f(0,0); glVertex3f(-30.0f, 0.0f,-30.0f);
-        glTexCoord2f(1.0f,0); glVertex3f(-30.0f, 0.0f, 30.0f);
-        glTexCoord2f(1.0f,1.0f); glVertex3f( 30.0f, 0.0f, 30.0f);
-        glTexCoord2f(0,1.0f); glVertex3f( 30.0f, 0.0f,-30.0f);
+        glTexCoord2f(1,0); glVertex3f(-30.0f, 0.0f, 30.0f);
+        glTexCoord2f(1,1); glVertex3f( 30.0f, 0.0f, 30.0f);
+        glTexCoord2f(0,1); glVertex3f( 30.0f, 0.0f,-30.0f);
     glEnd();
     glDisable(GL_TEXTURE_2D);
     glPopMatrix();
 }
 
-/*
- *
- * */
 void dibujarCaja() {
     glPushMatrix();
     glEnable(GL_TEXTURE_2D);
@@ -864,7 +769,6 @@ void dibujarTapa() {
 void display() {
     // Limpieza total del buffer de color, profundidad y esténcil.
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
     glLoadIdentity();
 
     // Punto 10: Aplicación dinámica de los "Flags" de estado visual
@@ -947,58 +851,37 @@ void procesarSeleccion(int x, int y) {
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    // Borramos el stencil para no tener residuos de la máscara de piso (Punto 8)
-    glLoadIdentity();
 
-    // tenemos que restaurar la cámara para que el raycast del mouse apunte a la posición correcta de los objetos, si no,
-    // el raycast apuntaría a la posición del skybox o a un punto erróneo en el espacio.
+    glLoadIdentity();
     float rX = camAngleX * 0.01745f;
     float rY = camAngleY * 0.01745f;
     float eyeX = camDist * sin(rX) * cos(rY);
     float eyeY = camDist * sin(rY);
     float eyeZ = camDist * cos(rX) * cos(rY);
-
-    //miramos desde la posición de la cámara hacia el centro de la escena (0,0,0) con el vector "up" apuntando hacia Y positivo
     gluLookAt(eyeX, eyeY, eyeZ, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 
-    // Preparamoes las esecenas de selección con colores sólidos únicos para cada objeto interactivo.
-
-    //--------------------------------------------------------------------------------
-    //ESENA CAJA:
-    //--------------------------------------------------------------------------------
     // --- ID 1: BASE (Verde RGB: 0, 255, 0) ---
     glColor3ub(0, 255, 0);
     glPushMatrix();
         glTranslatef(0.0f, cajaAlto / 2.0f + 0.01f, 0.0f);
         // Simplificación extrema de la caja (Hitbox)
         glBegin(GL_QUADS);
-	    
-	    //1.- Pared trasera Z negativo
             glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f( cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-
-	    //2.- Pared frontal Z positivo
             glVertex3f( cajaAncho/2.0f,  cajaAlto/2.0f, cajaProfundo/2.0f);
             glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, cajaProfundo/2.0f);
             glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, cajaProfundo/2.0f);
             glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, cajaProfundo/2.0f);
-
-	    //3.- Pared izquierda X negativo
             glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f,  cajaProfundo/2.0f);
             glVertex3f(-cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
-
-	    //4.- Pared derecha X positivo
             glVertex3f(cajaAncho/2.0f,  cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f(cajaAncho/2.0f,  cajaAlto/2.0f,  cajaProfundo/2.0f);
             glVertex3f(cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
             glVertex3f(cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
-
-	    //5.- Fondo (Piso interno) Y negativo
             glVertex3f(-cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f, -cajaProfundo/2.0f);
             glVertex3f( cajaAncho/2.0f, -cajaAlto/2.0f,  cajaProfundo/2.0f);
@@ -1006,9 +889,6 @@ void procesarSeleccion(int x, int y) {
         glEnd();
     glPopMatrix();
 
-    //--------------------------------------------------------------------------------
-    //ESCENA TAPA:
-    //--------------------------------------------------------------------------------
     // --- ID 2: TAPA (Rojo RGB: 255, 0, 0) ---
     glColor3ub(255, 0, 0);
     glPushMatrix();
@@ -1020,9 +900,6 @@ void procesarSeleccion(int x, int y) {
         glutSolidCube(1.0f);
     glPopMatrix();
 
-    //--------------------------------------------------------------------------------
-    //ESCENA INTERIOR DE LA CAJA : GEMA
-    //--------------------------------------------------------------------------------
     // --- ID 3: GEMA (Azul RGB: 0, 0, 255) ---
     glColor3ub(0, 0, 255);
     glPushMatrix();
@@ -1077,11 +954,8 @@ void procesarSeleccion(int x, int y) {
         }
     glPopMatrix();
 
-    //--------------------------------------------------------------------------------
-    //ESCENA EXTERIOR DE LA CAJA : ESTANDARTE FINAL
-    //--------------------------------------------------------------------------------
     // --- ID 4: ESTANDARTE FINAL (Magenta RGB: 200, 0, 200) ---
-    if (cajaDesbloqueada) { // Solo aparece después de resolver el puzzle
+    if (cajaDesbloqueada) {
         glColor3ub(200, 0, 200);
         float polZ      = cajaProfundo / 2.0f + 3.5f;
         float polAltura = 4.5f;
@@ -1245,12 +1119,8 @@ void cargarTexturasSkybox() {
 }
 
 GLuint cargarBMP(const char* ruta) {
-
     FILE* archivo = fopen(ruta, "rb");
-    if (!archivo) { 
-	printf("ERROR: No se pudo abrir: %s\n", ruta);
-	return 0; 
-    }
+    if (!archivo) { printf("ERROR: No se pudo abrir: %s\n", ruta); return 0; }
 
     unsigned char encabezado[54];
     if (fread(encabezado, 1, 54, archivo) != 54 || encabezado[0] != 'B' || encabezado[1] != 'M') {
@@ -1282,45 +1152,19 @@ GLuint cargarBMP(const char* ruta) {
     return id;
 }
 
-/*
- * Esta función inicializa los objetos NURBS para el pergamino de recompensa y el estandarte que ondea.
- * Se crean los renderizadores NURBS y se configuran sus propiedades, como la tolerancia de muestreo y el
- * modo de visualización.
- * Luego, se definen los puntos de control para ambos objetos. El pergamino tiene un bulto en el centro, 
- * mientras que el estandarte simula una tela ondulante con una caída en Y y una onda en Z.
- * */
 void initNURBS() {
     nurbPergamino = gluNewNurbsRenderer();
-    gluNurbsProperty(nurbPergamino, GLU_SAMPLING_TOLERANCE, 25.0);
-
-    //nota , podemos cambiar el modo de renderizado de GLU_FILL a GLU_OUTLINE_POLYGON para ver solo el contorno,
-    // o a GLU_POINT para ver solo los puntos de control. GLU_FILL es el modo sólido normal.
+    gluNurbsProperty(nurbPergamino, GLU_SAMPLING_TOLERANCE, 25.0); // Tolerancia de suavizado
     gluNurbsProperty(nurbPergamino, GLU_DISPLAY_MODE, GLU_FILL);
 
-    // con estos dos ciclos anidados recorro mi malla de 4x4. En los ejes X y Z simplemente separo los puntos 
-    // de control de manera uniforme usando una pequeña ecuación lineal. Pero en el eje Y (la altura), uso una 
-    // condicional if-else para detectar si estoy en el centro de la hoja (u==1 o u==2); si es así, elevo esos
-    // puntos a 1.0 para que la superficie NURBS se curve hacia arriba, formando un bulto en el pergamino,
-    // mientras los bordes se quedan en 0.0."
-   for (int u = 0; u < 4; u++) {
-       for (int v = 0; v < 4; v++) {
-           // Eje X: Espaciado matemático de los imanes de izquierda a derecha
-           ctrlPointsNurbs[u][v][0] = 3.0f * ((GLfloat)u - 1.5f);
-
-           // Eje Y: Altura (Aquí creamos el bulto del pergamino)
-           if (u == 1 || u == 2) {
-               // Si estamos en las filas centrales, levantamos los imanes a 1.0 de altura
-               ctrlPointsNurbs[u][v][1] = 1.0f; 
-           } else {
-               // Si son los bordes (u=0 o u=3), los dejamos pegados al piso (0.0)
-               ctrlPointsNurbs[u][v][1] = 0.0f; 
-          }
-
-           // Eje Z: Espaciado matemático de los imanes de arriba hacia abajo
-           ctrlPointsNurbs[u][v][2] = 3.0f * ((GLfloat)v - 1.5f);
-       }
-   }
-
+    // Inicializamos los puntos de control del pergamino de recompensa
+    for (int u = 0; u < 4; u++) {
+        for (int v = 0; v < 4; v++) {
+            ctrlPointsNurbs[u][v][0] = 3.0f * ((GLfloat)u - 1.5f);
+            ctrlPointsNurbs[u][v][1] = (u == 1 || u == 2) ? 1.0f : 0.0f; // Bulto en el centro
+            ctrlPointsNurbs[u][v][2] = 3.0f * ((GLfloat)v - 1.5f);
+        }
+    }
 
     // Inicializamos Puntos de control del Estandarte que ondea (Bandera lateral)
     float anchoP = 3.0f;
@@ -1332,8 +1176,8 @@ void initNURBS() {
             
             // Simulación matemática de tela ondulante en el eje Z
             float onda = 0.0f;
-            if (u == 1) onda =  1.0f;
-            if (u == 2) onda = -1.2f;
+            if (u == 1) onda =  0.2f;
+            if (u == 2) onda = -0.15f;
             ctrlPointsBanner[u][v][2] = onda;
         }
     }
@@ -1383,7 +1227,6 @@ void configurarOpenGL() {
     glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, materialBrillo);
 
     glEnable(GL_COLOR_MATERIAL); // Los glColor actuarán como difusos
-    
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
     
     glEnable(GL_LIGHTING);
@@ -1393,14 +1236,6 @@ void configurarOpenGL() {
 
     initNURBS();
     initQuadrics();
-
-    // --- NUEVO: Compilar el Toroide en la VRAM (Display List) ---
-    // Pedimos un ticket a la tarjeta gráfica y empezamos a grabar
-    idToroide = glGenLists(1);
-    glNewList(idToroide, GL_COMPILE);
-        // La tarjeta gráfica guarda esta geometría en su memoria ultrarrápida
-        glutSolidTorus(0.135f, 1.4f, 6, 24);
-    glEndList();
 }
 
 // ============================================================================
@@ -1411,10 +1246,7 @@ int main(int argc, char** argv) {
     glutInit(&argc, argv);
     
     // El Contexto solicita Buffers críticos: Doble Buffering, Profundidad y STENCIL
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_STENCIL); //<-
-    
-
-
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_STENCIL);
     glutInitWindowSize(800, 600);
     glutCreateWindow("ProyectoFinal: caja enigma - Jose Pablo Perez De Anda");
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f); // Tono lúgubre de fondo
@@ -1526,7 +1358,7 @@ II. TEORÍA Y TÉCNICAS APLICADAS
 
    C. SUPERFICIES NURBS (Non-Uniform Rational B-Splines)
    Para salir de los modelos toscos articulados y lograr la geometría en tela que solicitaba 
-   , introduje evaluación de Curvas Bezier generalizadas (B-Splines). Mediante los vectores 
+   la UAM, introduje evaluación de Curvas Bezier generalizadas (B-Splines). Mediante los vectores 
    "nudos", ordené a la librería de render de GLU interpolar progresivamente 16 puntos de 
    control (`ctrlPointsBanner`), transformando su posición en los ejes X, Y y especialmente un Z 
    ondulado continuo. Para lograr la textura, evalué de forma entrelazada las coordenadas {0,1} 
